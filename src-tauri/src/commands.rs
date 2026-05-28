@@ -1,5 +1,6 @@
 use crate::AppState;
 use serde::{Deserialize, Serialize};
+use sqlx::sqlite::SqlitePool;
 use tauri::State;
 use uuid::Uuid;
 
@@ -30,12 +31,17 @@ pub struct UpdateDraftInput {
     pub status: Option<String>,
 }
 
-/// Create a new draft in the queue
+/// Create a new draft in the queue (Tauri command entrypoint)
 #[tauri::command]
 pub async fn create_draft(
     state: State<'_, AppState>,
     input: CreateDraftInput,
 ) -> Result<Draft, String> {
+    create_draft_db(&state.db, input).await
+}
+
+/// Internal implementation — takes a raw pool so it is easy to test and reuse.
+pub async fn create_draft_db(db: &SqlitePool, input: CreateDraftInput) -> Result<Draft, String> {
     let id = Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
 
@@ -64,17 +70,25 @@ pub async fn create_draft(
     .bind(&draft.status)
     .bind(&draft.created_at)
     .bind(&draft.updated_at)
-    .execute(&state.db)
+    .execute(db)
     .await
     .map_err(|e| format!("Failed to create draft: {}", e))?;
 
     Ok(draft)
 }
 
-/// Get all drafts, optionally filtered by status
+/// Get all drafts, optionally filtered by status (Tauri command entrypoint)
 #[tauri::command]
 pub async fn get_drafts(
     state: State<'_, AppState>,
+    status: Option<String>,
+) -> Result<Vec<Draft>, String> {
+    get_drafts_db(&state.db, status).await
+}
+
+/// Internal implementation — easy to call from tests with an in-memory database.
+pub async fn get_drafts_db(
+    db: &SqlitePool,
     status: Option<String>,
 ) -> Result<Vec<Draft>, String> {
     let drafts = if let Some(s) = status {
@@ -82,87 +96,120 @@ pub async fn get_drafts(
             "SELECT * FROM drafts WHERE status = ? ORDER BY created_at DESC"
         )
         .bind(s)
-        .fetch_all(&state.db)
+        .fetch_all(db)
         .await
     } else {
         sqlx::query_as::<_, Draft>("SELECT * FROM drafts ORDER BY created_at DESC")
-            .fetch_all(&state.db)
+            .fetch_all(db)
             .await
     };
 
     drafts.map_err(|e| format!("Failed to fetch drafts: {}", e))
 }
 
-/// Get a single draft by ID
+/// Get a single draft by ID (Tauri command entrypoint)
 #[tauri::command]
 pub async fn get_draft(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<Option<Draft>, String> {
+    get_draft_db(&state.db, id).await
+}
+
+pub async fn get_draft_db(db: &SqlitePool, id: String) -> Result<Option<Draft>, String> {
     sqlx::query_as::<_, Draft>("SELECT * FROM drafts WHERE id = ?")
         .bind(id)
-        .fetch_optional(&state.db)
+        .fetch_optional(db)
         .await
         .map_err(|e| format!("Failed to fetch draft: {}", e))
 }
 
-/// Update an existing draft
+/// Update an existing draft (Tauri command entrypoint)
 #[tauri::command]
 pub async fn update_draft(
     state: State<'_, AppState>,
     id: String,
     input: UpdateDraftInput,
 ) -> Result<(), String> {
+    update_draft_db(&state.db, id, input).await
+}
+
+/// Internal implementation. Builds a dynamic UPDATE while keeping the code readable.
+pub async fn update_draft_db(
+    db: &SqlitePool,
+    id: String,
+    input: UpdateDraftInput,
+) -> Result<(), String> {
     let now = chrono::Utc::now().to_rfc3339();
 
-    // Build the query dynamically for the MVP (keeps it simple)
-    let mut query = "UPDATE drafts SET updated_at = ?".to_string();
-    let mut params: Vec<String> = vec![now.clone()];
+    // Collect the fields we actually want to update
+    let mut sets: Vec<(&str, String)> = vec![("updated_at", now.clone())];
 
     if let Some(text) = input.text {
-        query.push_str(", text = ?");
-        params.push(text);
+        sets.push(("text", text));
     }
     if let Some(image_url) = input.image_url {
-        query.push_str(", image_url = ?");
-        params.push(image_url);
+        sets.push(("image_url", image_url));
     }
     if let Some(status) = input.status {
-        query.push_str(", status = ?");
-        params.push(status);
+        sets.push(("status", status));
     }
 
-    query.push_str(" WHERE id = ?");
-    params.push(id);
+    // Build the SET clause safely
+    let set_clause = sets
+        .iter()
+        .map(|(col, _)| format!("{} = ?", col))
+        .collect::<Vec<_>>()
+        .join(", ");
 
-    let mut q = sqlx::query(&query);
-    for p in params {
-        q = q.bind(p);
+    let sql = format!(
+        "UPDATE drafts SET {} WHERE id = ?",
+        set_clause
+    );
+
+    let mut q = sqlx::query(&sql);
+
+    // Bind the values in order
+    for (_, value) in &sets {
+        q = q.bind(value);
     }
+    q = q.bind(id);
 
-    q.execute(&state.db)
+    q.execute(db)
         .await
         .map_err(|e| format!("Failed to update draft: {}", e))?;
 
     Ok(())
 }
 
-/// Delete a draft
+/// Delete a draft (Tauri command entrypoint)
 #[tauri::command]
 pub async fn delete_draft(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    delete_draft_db(&state.db, id).await
+}
+
+pub async fn delete_draft_db(db: &SqlitePool, id: String) -> Result<(), String> {
     sqlx::query("DELETE FROM drafts WHERE id = ?")
         .bind(id)
-        .execute(&state.db)
+        .execute(db)
         .await
         .map_err(|e| format!("Failed to delete draft: {}", e))?;
 
     Ok(())
 }
 
-/// Mark a draft as successfully posted
+/// Mark a draft as successfully posted (Tauri command entrypoint)
 #[tauri::command]
 pub async fn mark_draft_posted(
     state: State<'_, AppState>,
+    id: String,
+    x_post_id: String,
+) -> Result<(), String> {
+    mark_draft_posted_db(&state.db, id, x_post_id).await
+}
+
+pub async fn mark_draft_posted_db(
+    db: &SqlitePool,
     id: String,
     x_post_id: String,
 ) -> Result<(), String> {
@@ -182,9 +229,76 @@ pub async fn mark_draft_posted(
     .bind(&now)
     .bind(&now)
     .bind(id)
-    .execute(&state.db)
+    .execute(db)
     .await
     .map_err(|e| format!("Failed to mark draft as posted: {}", e))?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    async fn create_test_pool() -> SqlitePool {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("failed to create in-memory sqlite pool");
+
+        sqlx::migrate!("./migrations")
+            .run(&pool)
+            .await
+            .expect("failed to run migrations on test database");
+
+        pool
+    }
+
+    #[tokio::test]
+    async fn test_create_and_get_draft_via_repository() {
+        let db = create_test_pool().await;
+
+        let input = CreateDraftInput {
+            text: "Tesla delivered record numbers in Q2".to_string(),
+            sources_json: r#"[{"type":"x","id":"abc123"}]"#.to_string(),
+            image_url: Some("https://example.com/image.jpg".to_string()),
+        };
+
+        // Use the real reusable function
+        let created = create_draft_db(&db, input).await.expect("create failed");
+
+        assert_eq!(created.status, "pending");
+        assert!(!created.id.is_empty());
+
+        // Fetch via the repository function too
+        let all = get_drafts_db(&db, None).await.expect("get failed");
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].id, created.id);
+
+        let single = get_draft_db(&db, created.id.clone()).await.expect("get one failed");
+        assert!(single.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_update_draft_via_repository() {
+        let db = create_test_pool().await;
+
+        let created = create_draft_db(&db, CreateDraftInput {
+            text: "Original text".to_string(),
+            sources_json: "[]".to_string(),
+            image_url: None,
+        }).await.unwrap();
+
+        let update = UpdateDraftInput {
+            text: Some("Updated with fresh analysis".to_string()),
+            image_url: None,
+            status: Some("pending".to_string()),
+        };
+
+        update_draft_db(&db, created.id.clone(), update).await.expect("update failed");
+
+        let fetched = get_draft_db(&db, created.id).await.unwrap().unwrap();
+        assert_eq!(fetched.text, "Updated with fresh analysis");
+    }
 }

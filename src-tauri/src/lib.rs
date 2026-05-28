@@ -4,6 +4,7 @@ use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
 use std::path::PathBuf;
 use tauri::Manager;
 
+#[derive(Clone)]
 pub struct AppState {
     pub db: SqlitePool,
 }

@@ -3,7 +3,7 @@
 > **Living document.** This file captures architecture decisions, design discussions, tradeoffs, and the current task breakdown.
 > Update it after any significant conversation or when priorities shift.
 >
-> Last updated: 2025-05-28 (Fresh take principle added)
+> Last updated: 2025-05-28 (Major refactor of commands.rs for reusability/readability/testing — extracted *_db impl functions)
 
 ---
 
@@ -28,8 +28,68 @@ A **local-first desktop app** that helps the user stay on top of Tesla/TSLA/Elon
 - **Human approval required** — Every post must be explicitly approved in the MVP.
 - **Transparent research** — User can always see the sources that fed a draft.
 - **Fresh take required** — Drafts must offer original analysis, implications, connections, or a novel angle. They must not merely restate or closely paraphrase what has already been widely reported or said on X. When specific facts are drawn from sources, they must be explicitly attributed inline in the generated post.
+- **Tests for every new feature** — No feature is considered complete until it has automated tests. Tests are part of the definition of done. This applies to both backend commands and frontend behavior.
 - **Simple & reliable** — Prefer boring, debuggable solutions over clever ones.
 - **Secure by default** — Keys move to OS secure storage before any public distribution.
+
+---
+
+## Testing Strategy
+
+This section exists so that future sessions have clear, consistent guidance on how we approach testing. Update it as we make concrete tooling and process decisions.
+
+### Philosophy
+- Tests are **mandatory** for every new feature or significant change.
+- "Feature complete" = working code + passing tests + updated documentation (where relevant).
+- Prefer pragmatic, high-signal tests over 100% coverage theater.
+- Tests should be fast, reliable, and easy to run locally.
+- The existence of this rule in PLAN.md means we never have the "we'll add tests later" conversation again.
+
+### Current State (as of 2025-05-28)
+- **Frontend**: Vitest + React Testing Library + happy-dom is set up and working. One example test exists (`src/test/example.test.tsx`).
+- **Backend**: First real test added in `commands.rs` (`test_migrations_and_basic_draft_crud`). Uses in-memory SQLite + real migrations. `tokio` added to dev-dependencies.
+- We now have a proven pattern for both sides.
+
+### Backend (Rust / Tauri) Testing Approach
+- Use Rust's built-in test framework (`#[test]` functions) + `#[cfg(test)]` modules.
+- For database-dependent code: Use an in-memory SQLite database (`:memory:`) or a dedicated test database file per test run.
+- Integration-style tests for Tauri commands are acceptable and often more valuable than pure unit tests in this architecture.
+- Consider `tokio-test` or `sqlx::test` attribute for async DB tests if we adopt it.
+- Goal: Every new Tauri command should have at least one happy-path test + relevant error cases.
+
+### Frontend (React / TypeScript) Testing Approach
+- **Chosen stack**: **Vitest + React Testing Library + happy-dom**
+  - We chose `happy-dom` over `jsdom` due to better compatibility with the modern ESM-heavy dependency tree (daisyUI + PostCSS color tooling).
+- Focus on:
+  - Component behavior and user interactions
+  - Critical UI flows (approve, edit, skip, settings save)
+  - Mocking Tauri `invoke` calls cleanly (using `vi.mock` or `@tauri-apps/api` mocks)
+- E2E testing (Playwright or Tauri end-to-end) is desirable later but **not required** for MVP features.
+- Keep tests close to the components they cover (`*.test.tsx` or `*.spec.tsx`).
+- How to run: `npm test` or `npm run test:ui`
+
+### Backend (Rust / Tauri) Testing Approach
+- **Current approach**: Rust's built-in `#[test]` + `#[tokio::test]` with in-memory SQLite (`sqlite::memory:`).
+- We added `tokio` to `[dev-dependencies]`.
+- Pattern established: `create_test_pool()` helper that runs the real embedded migrations.
+- First real test lives in `src-tauri/src/commands.rs` under `#[cfg(test)]`.
+- Because Tauri commands take `State<'_, AppState>`, early tests exercise the data layer directly. We will improve this over time by extracting pure functions that take `&SqlitePool`.
+- How to run: `cd src-tauri && cargo test`
+
+### Definition of Done for Any New Work
+When working on a task/feature, the following must be true before marking it complete:
+- [ ] Implementation done and manually verified
+- [ ] Relevant automated tests written and passing
+- [ ] Tests cover happy path + at least one important edge/error case
+- [ ] PLAN.md updated if the work affected design, architecture, or process
+
+### Open Testing Decisions
+- How aggressively we will extract logic from Tauri commands to make them easier to unit test (current early tests go through the data layer directly).
+- Whether we want snapshot tests on the frontend.
+- Strategy for mocking `@tauri-apps/api` and Tauri invoke calls in component tests.
+- Whether we will enforce a minimum coverage threshold in CI later (not planned for MVP).
+
+Add new decisions here as we make them.
 
 ---
 
@@ -44,6 +104,9 @@ A **local-first desktop app** that helps the user stay on top of Tesla/TSLA/Elon
 
 ### In Progress / Partial
 - None — the backend is ahead of the frontend
+
+### Not Started (but newly prioritized)
+- **T-000**: Establish testing foundation for Rust + frontend (now highest priority before more feature work)
 
 ### Not Started
 - Real research pipeline (X + RSS)
@@ -80,6 +143,15 @@ Record important choices here with date + rationale.
   - May require the generation step to have visibility into the user's recent X posts and/or previously generated drafts to avoid repetition.
   - Research layer may need to distinguish between "raw facts" and "already widely discussed angles."
 
+### 2025-05-28 — Commands layer separation (readability + testability)
+- **Decision:** Split each Tauri command into a thin public `#[tauri::command]` wrapper + a `*_db(...)` implementation function that takes `&SqlitePool`.
+- **Rationale:** 
+  - Dramatically improves testability (we can now test real logic with in-memory databases).
+  - Makes the business logic reusable outside of Tauri commands.
+  - Keeps the Tauri-specific glue (State extraction) isolated and minimal.
+- **Result:** All CRUD logic now lives in reusable `*_db` functions. Tests in `commands.rs` now call the real functions instead of raw SQL.
+- **Future:** If the data layer grows, we can promote this into a proper `db/` module or `DraftRepository`.
+
 ---
 
 ## Task Breakdown
@@ -97,6 +169,14 @@ Tasks are grouped by phase. Checkboxes are the source of truth for status.
 ### Phase 1 — Core MVP (Next Priority)
 
 This is the minimum that makes the app actually useful.
+
+**Important:** Per the Testing Strategy above, every task below must include automated tests as part of completion.
+
+- [ ] **T-000** — Establish testing foundation (highest priority before building more features)
+  - Set up frontend test runner (Vitest + React Testing Library recommended)
+  - Add basic Rust test infrastructure (test module patterns + in-memory DB helper)
+  - Write at least one example test for an existing command (e.g. `create_draft` or `get_drafts`) to prove the pattern works
+  - Document the testing workflow in PLAN.md under Testing Strategy
 
 - [ ] **T-001** — Wire React frontend to Rust draft commands
   - Replace placeholder cards with real data from `get_drafts`
@@ -182,6 +262,74 @@ Add new questions here as they come up. Resolve and move to Design Decisions whe
 This section captures key discussions from conversations so future sessions can pick up context quickly.
 
 **Format:** Add new entries at the **top**.
+
+---
+
+### 2025-05-28 — Commands.rs refactor for reusability, readability & testing
+
+**What we did:**
+- Extracted all database logic into public `*_db(db: &SqlitePool, ...)` functions.
+- Tauri command functions are now thin one-liner wrappers.
+- Cleaned up the ugly dynamic SQL string building in `update_draft`.
+- Rewrote the tests to call the real repository-style functions with in-memory pools (much higher value).
+
+**Why this matters:**
+- Reusability: The core logic can now be used from tests, future CLI tools, or other entrypoints.
+- Readability: Clear separation between "Tauri glue" and actual behavior.
+- Testing: We can now write proper unit/integration tests against the real functions instead of duplicating SQL.
+
+This aligns with the decision that testing + clean architecture are high priority.
+
+---
+
+### 2025-05-28 — T-000 completed: Testing foundation established
+
+**Participants:** User + Grok
+
+**Work completed:**
+- Frontend: Installed Vitest + React Testing Library + happy-dom. Configured Vite for testing. Created working example test. Scripts: `npm test` and `npm run test:ui`.
+- Backend: Added `tokio` to dev-dependencies. Created first real test (`test_migrations_and_basic_draft_crud`) using in-memory SQLite + production migrations in `commands.rs`.
+- Proved that both environments can run meaningful tests.
+
+**Decisions locked in (updated in Testing Strategy):**
+- Using `happy-dom` instead of jsdom due to ESM friction with daisyUI/PostCSS stack.
+- Early Rust tests will exercise the data layer directly (we'll improve command testability later by extracting pure functions).
+- Both `npm test` and `cargo test` (from src-tauri) are now the official ways to run tests.
+
+**Notes:**
+- The first Rust test does **not** go through the Tauri `State` wrapper yet. This is acceptable for T-000.
+- PLAN.md Testing Strategy section has been updated with actual choices instead of recommendations.
+
+**Next:**
+- T-000 is considered complete.
+- Future tasks (starting with T-001) must follow the Definition of Done including tests.
+
+---
+
+### 2025-05-28 — Mandatory testing policy for all new work
+
+**Participants:** User + Grok
+
+**What we discussed:**
+- PLAN.md must become the complete source of truth between sessions.
+- Going forward, **no new feature or significant change is considered done** without automated tests.
+- This rule should be enforced culturally and captured explicitly so it never has to be re-decided.
+
+**Decisions made:**
+- Added "**Tests for every new feature**" as a top-level Guiding Principle.
+- Created a full new `## Testing Strategy` section covering:
+  - Philosophy
+  - Current state (currently zero tests)
+  - Backend testing approach (Rust built-in + in-memory SQLite)
+  - Frontend testing approach (Vitest + React Testing Library as lean favorite)
+  - Clear Definition of Done checklist
+  - Open decisions still to be made
+- Added **T-000** — Establish testing foundation as the new highest-priority task in Phase 1.
+- Updated all Phase 1 tasks implicitly: tests are now required.
+
+**Action items:**
+- When starting T-000, choose and lock in the frontend test stack, then document it.
+- After T-000 is done, retroactively consider whether any of the existing Rust commands should get basic test coverage before we build on top of them.
 
 ---
 
