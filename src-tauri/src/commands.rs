@@ -302,3 +302,62 @@ mod tests {
         assert_eq!(fetched.text, "Updated with fresh analysis");
     }
 }
+
+// ============================================
+// Settings / API Keys (persisted in DB for now)
+// ============================================
+
+/// Ensure the settings table exists (called lazily)
+async fn ensure_settings_table(db: &SqlitePool) {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(db)
+    .await
+    .ok(); // ignore error if it already exists
+}
+
+#[tauri::command]
+pub async fn get_setting(
+    state: State<'_, AppState>,
+    key: String,
+) -> Result<Option<String>, String> {
+    ensure_settings_table(&state.db).await;
+
+    let result: Option<(String,)> = sqlx::query_as("SELECT value FROM settings WHERE key = ?")
+        .bind(key)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| format!("Failed to read setting: {}", e))?;
+
+    Ok(result.map(|(v,)| v))
+}
+
+#[tauri::command]
+pub async fn set_setting(
+    state: State<'_, AppState>,
+    key: String,
+    value: String,
+) -> Result<(), String> {
+    ensure_settings_table(&state.db).await;
+
+    sqlx::query(
+        r#"
+        INSERT INTO settings (key, value)
+        VALUES (?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+        "#,
+    )
+    .bind(key)
+    .bind(value)
+    .execute(&state.db)
+    .await
+    .map_err(|e| format!("Failed to save setting: {}", e))?;
+
+    Ok(())
+}

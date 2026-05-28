@@ -3,7 +3,7 @@
 > **Living document.** This file captures architecture decisions, design discussions, tradeoffs, and the current task breakdown.
 > Update it after any significant conversation or when priorities shift.
 >
-> Last updated: 2025-05-28 (Major refactor of commands.rs for reusability/readability/testing — extracted *_db impl functions)
+> Last updated: 2025-06-02 (API key now editable + persistable in Settings UI; switched test model to grok-3)
 
 ---
 
@@ -152,7 +152,15 @@ Record important choices here with date + rationale.
 - **Result:** All CRUD logic now lives in reusable `*_db` functions. Tests in `commands.rs` now call the real functions instead of raw SQL.
 - **Future:** If the data layer grows, we can promote this into a proper `db/` module or `DraftRepository`.
 
+### 2025-06-02 — API Key storage (MVP approach)
+- **Decision:** xAI API key is persisted in the existing SQLite database via new `get_setting` / `set_setting` commands (using a simple `settings` table created on first use).
+- **Rationale:** Allowed us to quickly deliver an editable + savable key experience directly in the Settings UI without adding new dependencies or plugins. Users no longer need to edit `.env` and restart.
+- **Tradeoffs:** Keys are stored in plaintext within the app's data directory. This is acceptable for local development and early testing, but **must** be replaced with proper OS secure storage (keychain / credential vault) before packaging/distribution.
+- **Related:** Directly fulfills the request to make the API key "submittable on the Settings tab". Advances T-008 (Settings UI for credentials). Also involved UI polish (Show/Hide toggle, fixed label overlap, save feedback).
+
 ---
+
+
 
 ## Task Breakdown
 
@@ -262,6 +270,35 @@ Add new questions here as they come up. Resolve and move to Design Decisions whe
 This section captures key discussions from conversations so future sessions can pick up context quickly.
 
 **Format:** Add new entries at the **top**.
+
+---
+
+### 2025-06-02 — API Key now editable & persistable in Settings UI
+
+**Participants:** User + Grok
+
+**What we built:**
+- Made the xAI API key fully editable and savable directly from the Settings tab (no more editing `.env` + restarting).
+- Added backend commands `get_setting` / `set_setting` that store values in a simple `settings` table in the existing SQLite database.
+- Frontend changes:
+  - Input is now writable (with placeholder).
+  - "Save Key" button that persists via Tauri command.
+  - Show/Hide toggle (eye icon) for the password field.
+  - Wider input field + fixed label overlap bug (switched to proper daisyUI `form-control` structure).
+  - Improved save feedback: green "Saved!" badge that auto-dismisses.
+  - Test button now uses the value the user has typed (or the saved key).
+
+**Key decision:**
+- Switched the test connection model from `grok-3-mini` to `grok-3` after the user reported errors. User confirmed the test now works successfully with `grok-3`.
+
+**Documentation:**
+- Added new Design Decision entry: "API Key storage (MVP approach)" explaining the current SQLite method + the explicit plan to move to secure storage later.
+- Updated Task progress toward T-008 (Settings UI for credentials).
+
+**Notes / Future work:**
+- Current storage is plaintext in app data (fine for dev, not for release).
+- This is a stepping stone — we will replace with OS keychain/secure storage before packaging.
+- X credentials and other keys can reuse the same `get_setting`/`set_setting` infrastructure.
 
 ---
 

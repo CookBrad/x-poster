@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { invoke } from '@tauri-apps/api/core'
 
 type Tab = 'queue' | 'research' | 'settings' | 'history'
 
@@ -6,12 +7,66 @@ function App() {
   const [activeTab, setActiveTab] = useState<Tab>('queue')
   const [testResult, setTestResult] = useState<string>('')
 
-  // In development, Vite exposes VITE_* vars from .env
-  const xaiKey = import.meta.env.VITE_XAI_API_KEY as string | undefined
+  // Persisted xAI key (loaded from backend or .env fallback)
+  const [savedXaiKey, setSavedXaiKey] = useState<string>('')
+  // What the user is currently typing in the input
+  const [xaiKeyInput, setXaiKeyInput] = useState<string>('')
+
+  // UI state for the API key field
+  const [showXaiKey, setShowXaiKey] = useState(false)
+  const [keySaved, setKeySaved] = useState(false)
+
+  // Effective key used for testing (prefer what user typed, otherwise saved)
+  const effectiveXaiKey = xaiKeyInput.trim() || savedXaiKey
+
+  // Load saved key from backend on mount (with .env fallback)
+  useEffect(() => {
+    async function loadKey() {
+      try {
+        const stored = await invoke<string | null>('get_setting', { key: 'xai_api_key' })
+        if (stored) {
+          setSavedXaiKey(stored)
+          setXaiKeyInput('') // don't prefill the sensitive value for security
+        } else {
+          // Fallback to .env during development
+          const envKey = import.meta.env.VITE_XAI_API_KEY as string | undefined
+          if (envKey) {
+            setSavedXaiKey(envKey)
+          }
+        }
+      } catch (e) {
+        console.error('Failed to load saved xAI key', e)
+        // fallback to env
+        const envKey = import.meta.env.VITE_XAI_API_KEY as string | undefined
+        if (envKey) setSavedXaiKey(envKey)
+      }
+    }
+    loadKey()
+  }, [])
+
+  async function saveXaiKey() {
+    const keyToSave = xaiKeyInput.trim()
+    if (!keyToSave) {
+      setTestResult('Please enter an API key before saving.')
+      return
+    }
+    try {
+      await invoke('set_setting', { key: 'xai_api_key', value: keyToSave })
+      setSavedXaiKey(keyToSave)
+      setXaiKeyInput('') // clear input after save for security
+      setKeySaved(true)
+      setTestResult('')
+
+      // Auto-hide the success indicator after 3 seconds
+      setTimeout(() => setKeySaved(false), 3000)
+    } catch (e: any) {
+      setTestResult(`❌ Failed to save key: ${e}`)
+    }
+  }
 
   async function testXaiConnection() {
-    if (!xaiKey) {
-      setTestResult('No VITE_XAI_API_KEY found in .env. Paste your key and restart `npm run tauri dev`.')
+    if (!effectiveXaiKey) {
+      setTestResult('Please enter an xAI API key above.')
       return
     }
     setTestResult('Testing xAI connection...')
@@ -20,11 +75,11 @@ function App() {
       const res = await fetch('https://api.x.ai/v1/chat/completions', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${xaiKey}`,
+          'Authorization': `Bearer ${effectiveXaiKey}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'grok-3-mini', // or your preferred balanced model
+          model: 'grok-3', // current stable default (grok-3-mini can be unreliable)
           messages: [
             { role: 'system', content: 'You are a helpful assistant.' },
             { role: 'user', content: 'Say hello from x-poster in one short sentence.' }
@@ -140,37 +195,88 @@ function App() {
         )}
 
         {activeTab === 'settings' && (
-          <div className="max-w-xl">
+          <div className="max-w-2xl">
             <h2 className="text-2xl font-semibold mb-4">Settings</h2>
 
             <div className="card bg-base-100 mb-6">
               <div className="card-body">
-                <h3 className="font-semibold mb-2">API Keys (Development)</h3>
+                <h3 className="font-semibold mb-2">API Keys</h3>
                 <p className="text-sm mb-3 opacity-80">
-                  Paste keys in <code>.env</code> (in project root). Restart <code>npm run tauri dev</code> after changes.
-                  Real keys will be stored securely in the packaged app later.
+                  Enter your xAI API key below and click <strong>Save Key</strong>. 
+                  The key is stored locally in the app. You can still use <code>VITE_XAI_API_KEY</code> in <code>.env</code> as a fallback during development.
                 </p>
 
-                <div className="form-control mb-3">
-                  <label className="label"><span className="label-text">xAI API Key</span></label>
-                  <input
-                    type="password"
-                    className="input input-bordered font-mono text-sm"
-                    value={xaiKey ? '••••••••••••••••' + xaiKey.slice(-6) : '(not set in .env)'}
-                    readOnly
-                  />
+                {/* xAI API Key Input with Show/Hide + better feedback */}
+                <label className="form-control w-full max-w-md mb-2">
+                  <div className="label">
+                    <span className="label-text">xAI API Key</span>
+                  </div>
+
+                  <div className="join w-full">
+                    <input
+                      type={showXaiKey ? 'text' : 'password'}
+                      className="input input-bordered join-item flex-1 font-mono text-sm"
+                      placeholder="sk-..."
+                      value={xaiKeyInput}
+                      onChange={(e) => setXaiKeyInput(e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-ghost join-item border border-l-0"
+                      onClick={() => setShowXaiKey(!showXaiKey)}
+                      title={showXaiKey ? 'Hide key' : 'Show key'}
+                    >
+                      {showXaiKey ? (
+                        // Eye slash icon
+                        <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                        </svg>
+                      ) : (
+                        // Eye icon
+                        <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
+
+                  <div className="label">
+                    <span className="label-text-alt opacity-60">
+                      {savedXaiKey
+                        ? 'A key is currently saved. Enter a new one above to replace it.'
+                        : 'No key saved yet.'}
+                    </span>
+                  </div>
+                </label>
+
+                {/* Action buttons + save feedback */}
+                <div className="flex gap-2 items-center">
+                  <button
+                    className="btn btn-primary flex-1"
+                    onClick={saveXaiKey}
+                    disabled={!xaiKeyInput.trim()}
+                  >
+                    Save Key
+                  </button>
+                  <button
+                    className="btn btn-accent flex-1"
+                    onClick={testXaiConnection}
+                    disabled={!effectiveXaiKey}
+                  >
+                    Test xAI Connection
+                  </button>
+
+                  {/* Improved save feedback */}
+                  {keySaved && (
+                    <div className="badge badge-success gap-2 whitespace-nowrap">
+                      Saved!
+                    </div>
+                  )}
                 </div>
 
-                <button
-                  className="btn btn-accent w-full"
-                  onClick={testXaiConnection}
-                  disabled={!xaiKey}
-                >
-                  Test xAI Connection
-                </button>
-
                 {testResult && (
-                  <div className="alert alert-sm mt-3 whitespace-pre-wrap text-sm">
+                  <div className={`alert alert-sm mt-3 whitespace-pre-wrap text-sm ${testResult.startsWith('✅') ? 'alert-success' : 'alert-error'}`}>
                     {testResult}
                   </div>
                 )}
@@ -178,7 +284,7 @@ function App() {
             </div>
 
             <div className="text-xs opacity-70">
-              X API credentials will appear here once we implement the client. Paste them in <code>.env</code> for now.
+              X API credentials will appear here once we implement the client.
             </div>
           </div>
         )}
