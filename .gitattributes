@@ -1,0 +1,79 @@
+# .gitattributes for x-poster
+# Tauri (Rust) + React + TypeScript + Vite project
+
+# --------------------------------------------------------------------
+# Line ending normalization
+# --------------------------------------------------------------------
+# Auto-detect text files and normalize to LF on commit, native line endings on checkout.
+# This is the recommended default for cross-platform projects.
+* text=auto
+
+# Explicitly declare common text file types (helps with edge cases)
+*.md            text
+*.txt           text
+*.rs            text
+*.ts            text
+*.tsx           text
+*.js            text
+*.mjs           text
+*.cjs           text
+*.json          text
+*.jsonc         text
+*.toml          text
+*.sql           text
+*.css           text
+*.scss          text
+*.html          text
+*.htm           text
+*.xml           text
+*.yml           text
+*.yaml          text
+*.sh            text
+*.bat           text
+*.ps1           text
+*.gitignore     text
+*.gitattributes text
+*.env.example   text
+
+# Force LF for shell scripts (important if any are added later)
+*.sh            text eol=lf
+
+# --------------------------------------------------------------------
+# Binary files
+# --------------------------------------------------------------------
+# Never attempt line ending conversion or textual diffs on binary assets.
+*.png           binary
+*.jpg           binary
+*.jpeg          binary
+*.gif           binary
+*.ico           binary
+*.icns          binary
+*.webp          binary
+*.bmp           binary
+*.pdf           binary
+*.zip           binary
+*.tar           binary
+*.gz            binary
+*.7z            binary
+*.exe           binary
+*.dll           binary
+*.so            binary
+*.dylib         binary
+*.a             binary
+*.o             binary
+
+# SVGs are usually better treated as text for diffing and merging
+*.svg           text
+
+# --------------------------------------------------------------------
+# Language statistics (optional - improves GitHub language breakdown)
+# --------------------------------------------------------------------
+# Tell GitHub Linguist to recognize the primary languages correctly
+*.rs            linguist-language=Rust
+*.tsx           linguist-language=TypeScript
+*.ts            linguist-language=TypeScript
+
+# Ignore generated / vendored directories from language stats
+src-tauri/target/ linguist-vendored
+node_modules/     linguist-vendored
+dist/             linguist-vendored
