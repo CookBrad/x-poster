@@ -273,6 +273,31 @@ This section captures key discussions from conversations so future sessions can 
 
 ---
 
+### 2025-06-02 — Added proper tests for Settings / Save Key feature
+
+**What was done:**
+- Refactored `get_setting` / `set_setting` in Rust to expose clean `*_db` versions (following the established pattern from T-000).
+- Added 4 Rust unit tests covering:
+  - Happy path (set + get)
+  - Getting non-existent key returns `None`
+  - Overwriting existing keys
+  - Allowing empty values (edge case)
+- Extracted API key UI logic into a reusable `ApiKeySettings` component for better testability and separation of concerns.
+- Added 6 frontend tests using Vitest + React Testing Library that cover:
+  - Happy path save (mocked invoke success + "Saved!" badge)
+  - Unhappy path (mocked invoke rejection + error message)
+  - Input validation (disabled button when empty)
+  - Visibility toggle
+
+**Outcome:**
+- Both happy and unhappy paths for the save key action are now covered at the appropriate layers.
+- All new tests pass.
+
+**Documentation:**
+- Updated PLAN.md Session Log with this entry.
+
+---
+
 ### 2025-06-02 — API Key now editable & persistable in Settings UI
 
 **Participants:** User + Grok

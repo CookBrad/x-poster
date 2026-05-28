@@ -301,6 +301,74 @@ mod tests {
         let fetched = get_draft_db(&db, created.id).await.unwrap().unwrap();
         assert_eq!(fetched.text, "Updated with fresh analysis");
     }
+
+    // ============================================
+    // Settings / API Key tests (happy + unhappy paths)
+    // ============================================
+
+    #[tokio::test]
+    async fn test_set_and_get_setting_happy_path() {
+        let db = create_test_pool().await;
+
+        // Set a value
+        set_setting_db(&db, "xai_api_key".to_string(), "sk-test-12345".to_string())
+            .await
+            .expect("set_setting failed");
+
+        // Get it back
+        let value = get_setting_db(&db, "xai_api_key".to_string())
+            .await
+            .expect("get_setting failed");
+
+        assert_eq!(value, Some("sk-test-12345".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_get_nonexistent_setting_returns_none() {
+        let db = create_test_pool().await;
+
+        let value = get_setting_db(&db, "nonexistent_key".to_string())
+            .await
+            .expect("get_setting failed");
+
+        assert_eq!(value, None);
+    }
+
+    #[tokio::test]
+    async fn test_set_setting_overwrites_existing_value() {
+        let db = create_test_pool().await;
+
+        // Set initial value
+        set_setting_db(&db, "xai_api_key".to_string(), "old-key".to_string())
+            .await
+            .expect("set failed");
+
+        // Overwrite
+        set_setting_db(&db, "xai_api_key".to_string(), "new-key-999".to_string())
+            .await
+            .expect("set failed");
+
+        let value = get_setting_db(&db, "xai_api_key".to_string())
+            .await
+            .expect("get failed");
+
+        assert_eq!(value, Some("new-key-999".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_set_empty_value_is_allowed() {
+        let db = create_test_pool().await;
+
+        set_setting_db(&db, "empty_key".to_string(), "".to_string())
+            .await
+            .expect("set empty value failed");
+
+        let value = get_setting_db(&db, "empty_key".to_string())
+            .await
+            .expect("get failed");
+
+        assert_eq!(value, Some("".to_string()));
+    }
 }
 
 // ============================================
@@ -327,11 +395,15 @@ pub async fn get_setting(
     state: State<'_, AppState>,
     key: String,
 ) -> Result<Option<String>, String> {
-    ensure_settings_table(&state.db).await;
+    get_setting_db(&state.db, key).await
+}
+
+pub async fn get_setting_db(db: &SqlitePool, key: String) -> Result<Option<String>, String> {
+    ensure_settings_table(db).await;
 
     let result: Option<(String,)> = sqlx::query_as("SELECT value FROM settings WHERE key = ?")
-        .bind(key)
-        .fetch_optional(&state.db)
+        .bind(&key)
+        .fetch_optional(db)
         .await
         .map_err(|e| format!("Failed to read setting: {}", e))?;
 
@@ -344,7 +416,11 @@ pub async fn set_setting(
     key: String,
     value: String,
 ) -> Result<(), String> {
-    ensure_settings_table(&state.db).await;
+    set_setting_db(&state.db, key, value).await
+}
+
+pub async fn set_setting_db(db: &SqlitePool, key: String, value: String) -> Result<(), String> {
+    ensure_settings_table(db).await;
 
     sqlx::query(
         r#"
@@ -353,9 +429,9 @@ pub async fn set_setting(
         ON CONFLICT(key) DO UPDATE SET value = excluded.value
         "#,
     )
-    .bind(key)
-    .bind(value)
-    .execute(&state.db)
+    .bind(&key)
+    .bind(&value)
+    .execute(db)
     .await
     .map_err(|e| format!("Failed to save setting: {}", e))?;
 
