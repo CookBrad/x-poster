@@ -20,28 +20,38 @@ function App() {
   // Persisted xAI key (loaded from backend or .env fallback)
   const [savedXaiKey, setSavedXaiKey] = useState<string>('')
 
-  // Load saved key from backend on mount (with .env fallback)
+  // X Bearer Token (used for X/Twitter search in research)
+  const [savedXBearToken, setSavedXBearToken] = useState<string>('')
+
+  // Load saved keys from backend on mount
   useEffect(() => {
-    async function loadKey() {
+    async function loadKeys() {
+      // xAI Key
       try {
-        const stored = await invoke<string | null>('get_setting', { key: 'xai_api_key' })
-        if (stored) {
-          setSavedXaiKey(stored)
+        const storedXai = await invoke<string | null>('get_setting', { key: 'xai_api_key' })
+        if (storedXai) {
+          setSavedXaiKey(storedXai)
         } else {
-          // Fallback to .env during development
           const envKey = import.meta.env.VITE_XAI_API_KEY as string | undefined
-          if (envKey) {
-            setSavedXaiKey(envKey)
-          }
+          if (envKey) setSavedXaiKey(envKey)
         }
       } catch (e) {
         console.error('Failed to load saved xAI key', e)
-        // fallback to env
         const envKey = import.meta.env.VITE_XAI_API_KEY as string | undefined
         if (envKey) setSavedXaiKey(envKey)
       }
+
+      // X Bearer Token
+      try {
+        const storedBearer = await invoke<string | null>('get_setting', { key: 'x_bearer_token' })
+        if (storedBearer) {
+          setSavedXBearToken(storedBearer)
+        }
+      } catch (e) {
+        console.error('Failed to load saved X bearer token', e)
+      }
     }
-    loadKey()
+    loadKeys()
   }, [])
 
   return (
@@ -107,7 +117,7 @@ function App() {
                 <h3 className="font-semibold mb-2">API Keys</h3>
                 <p className="text-sm mb-3 opacity-80">
                   Enter your xAI API key below and click <strong>Save Key</strong>. 
-                  The key is stored locally in the app. You can still use <code>VITE_XAI_API_KEY</code> in <code>.env</code> as a fallback during development.
+                  The key is stored locally in the app (SQLite).
                 </p>
 
                 <ApiKeySettings 
@@ -118,8 +128,95 @@ function App() {
               </div>
             </div>
 
-            <div className="text-xs opacity-70">
-              X API credentials will appear here once we implement the client.
+            <div className="card bg-base-100">
+              <div className="card-body">
+                <h3 className="font-semibold mb-2">X Bearer Token (for Research)</h3>
+                <p className="text-sm mb-3 opacity-80">
+                  Paste your X (Twitter) Bearer Token here to enable X search in the Research tab. 
+                  This is required for pulling recent posts about Tesla/TSLA.
+                </p>
+
+                <div className="form-control w-full max-w-md">
+                  <div className="label">
+                    <span className="label-text">X Bearer Token</span>
+                  </div>
+                  <div className="join w-full">
+                    <input
+                      type="password"
+                      className="input input-bordered join-item flex-1 font-mono text-sm"
+                      placeholder="AAAAAAAAAAAAAAAAAAAAA..."
+                      value={savedXBearToken ? '••••••••••••••••••••' : ''}
+                      readOnly
+                    />
+                  </div>
+                  <div className="label">
+                    <span className="label-text-alt opacity-60">
+                      {savedXBearToken ? 'A bearer token is saved.' : 'No bearer token saved.'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex gap-2 items-center mt-2">
+                  <input
+                    type="text"
+                    className="input input-bordered w-full max-w-md font-mono text-sm"
+                    placeholder="Enter new Bearer Token to save"
+                    onKeyDown={async (e) => {
+                      if (e.key === 'Enter' && e.currentTarget.value.trim()) {
+                        try {
+                          await invoke('set_setting', { 
+                            key: 'x_bearer_token', 
+                            value: e.currentTarget.value.trim() 
+                          })
+                          setSavedXBearToken(e.currentTarget.value.trim())
+                          e.currentTarget.value = ''
+                          alert('X Bearer Token saved!')
+                        } catch (err) {
+                          alert('Failed to save X Bearer Token: ' + err)
+                        }
+                      }
+                    }}
+                  />
+                  <button
+                    className="btn btn-primary btn-sm"
+                    onClick={async (e) => {
+                      const input = (e.currentTarget.parentElement?.querySelector('input') as HTMLInputElement)
+                      if (input && input.value.trim()) {
+                        try {
+                          await invoke('set_setting', { 
+                            key: 'x_bearer_token', 
+                            value: input.value.trim() 
+                          })
+                          setSavedXBearToken(input.value.trim())
+                          input.value = ''
+                          alert('X Bearer Token saved!')
+                        } catch (err) {
+                          alert('Failed to save X Bearer Token: ' + err)
+                        }
+                      }
+                    }}
+                  >
+                    Save
+                  </button>
+                  {savedXBearToken && (
+                    <button
+                      className="btn btn-ghost btn-sm text-error"
+                      onClick={async () => {
+                        if (confirm('Remove saved X Bearer Token?')) {
+                          try {
+                            await invoke('delete_setting', { key: 'x_bearer_token' })
+                            setSavedXBearToken('')
+                          } catch (err) {
+                            alert('Failed to remove token: ' + err)
+                          }
+                        }
+                      }}
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         )}
