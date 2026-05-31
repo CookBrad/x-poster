@@ -399,6 +399,24 @@ pub async fn fetch_research_sources(state: State<'_, AppState>) -> Result<Vec<re
     Ok(sources)
 }
 
+#[tauri::command]
+pub async fn test_x_bearer_token(token: String) -> Result<String, String> {
+    if token.trim().is_empty() {
+        return Err("No token provided".to_string());
+    }
+
+    // Lightweight test: try to fetch a very small number of recent tweets
+    let test_query = "Tesla lang:en -is:retweet";
+    match research::fetch_x_sources(&token, test_query).await {
+        Ok(results) => {
+            Ok(format!("Success! X API responded. Found {} recent results.", results.len()))
+        }
+        Err(e) => {
+            Err(format!("X API test failed: {}", e))
+        }
+    }
+}
+
 // ============================================
 // Settings / API Keys (persisted in DB for now)
 // ============================================

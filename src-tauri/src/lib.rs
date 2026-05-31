@@ -58,6 +58,7 @@ pub fn run() {
         commands::set_setting,
         commands::delete_setting,
         commands::fetch_research_sources,
+        commands::test_x_bearer_token,
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

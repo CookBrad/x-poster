@@ -22,6 +22,11 @@ function App() {
 
   // X Bearer Token (used for X/Twitter search in research)
   const [savedXBearToken, setSavedXBearToken] = useState<string>('')
+  const [xBearTokenInput, setXBearTokenInput] = useState('')
+  const [showXBearToken, setShowXBearToken] = useState(false)
+  const [xBearTokenSaved, setXBearTokenSaved] = useState(false)
+  const [xBearTestResult, setXBearTestResult] = useState('')
+  const [xBearError, setXBearError] = useState('')
 
   // Load saved keys from backend on mount
   useEffect(() => {
@@ -132,90 +137,127 @@ function App() {
               <div className="card-body">
                 <h3 className="font-semibold mb-2">X Bearer Token (for Research)</h3>
                 <p className="text-sm mb-3 opacity-80">
-                  Paste your X (Twitter) Bearer Token here to enable X search in the Research tab. 
-                  This is required for pulling recent posts about Tesla/TSLA.
+                  Paste your X (Twitter) App Bearer Token to enable X search in the Research tab.
                 </p>
 
-                <div className="form-control w-full max-w-md">
+                <div className="form-control w-full max-w-md mb-2">
                   <div className="label">
                     <span className="label-text">X Bearer Token</span>
                   </div>
+
                   <div className="join w-full">
                     <input
-                      type="password"
+                      type={showXBearToken ? 'text' : 'password'}
                       className="input input-bordered join-item flex-1 font-mono text-sm"
                       placeholder="AAAAAAAAAAAAAAAAAAAAA..."
-                      value={savedXBearToken ? '••••••••••••••••••••' : ''}
-                      readOnly
+                      value={xBearTokenInput}
+                      onChange={(e) => {
+                        setXBearTokenInput(e.target.value);
+                        setXBearTestResult('');
+                        setXBearError('');
+                      }}
                     />
+                    <button
+                      type="button"
+                      className="btn btn-ghost join-item border border-l-0"
+                      onClick={() => setShowXBearToken(!showXBearToken)}
+                    >
+                      {showXBearToken ? '🙈' : '👁️'}
+                    </button>
                   </div>
+
                   <div className="label">
                     <span className="label-text-alt opacity-60">
-                      {savedXBearToken ? 'A bearer token is saved.' : 'No bearer token saved.'}
+                      {savedXBearToken
+                        ? 'A bearer token is currently saved.'
+                        : 'No bearer token saved yet.'}
                     </span>
                   </div>
                 </div>
 
-                <div className="flex gap-2 items-center mt-2">
-                  <input
-                    type="text"
-                    className="input input-bordered w-full max-w-md font-mono text-sm"
-                    placeholder="Enter new Bearer Token to save"
-                    onKeyDown={async (e) => {
-                      if (e.key === 'Enter' && e.currentTarget.value.trim()) {
-                        try {
-                          await invoke('set_setting', { 
-                            key: 'x_bearer_token', 
-                            value: e.currentTarget.value.trim() 
-                          })
-                          setSavedXBearToken(e.currentTarget.value.trim())
-                          e.currentTarget.value = ''
-                          alert('X Bearer Token saved!')
-                        } catch (err) {
-                          alert('Failed to save X Bearer Token: ' + err)
-                        }
-                      }
-                    }}
-                  />
+                <div className="flex gap-2 items-center flex-wrap">
                   <button
                     className="btn btn-primary btn-sm"
-                    onClick={async (e) => {
-                      const input = (e.currentTarget.parentElement?.querySelector('input') as HTMLInputElement)
-                      if (input && input.value.trim()) {
-                        try {
-                          await invoke('set_setting', { 
-                            key: 'x_bearer_token', 
-                            value: input.value.trim() 
-                          })
-                          setSavedXBearToken(input.value.trim())
-                          input.value = ''
-                          alert('X Bearer Token saved!')
-                        } catch (err) {
-                          alert('Failed to save X Bearer Token: ' + err)
-                        }
+                    onClick={async () => {
+                      const keyToSave = xBearTokenInput.trim();
+                      if (!keyToSave) return;
+
+                      try {
+                        await invoke('set_setting', { key: 'x_bearer_token', value: keyToSave });
+                        setSavedXBearToken(keyToSave);
+                        setXBearTokenInput('');
+                        setXBearTokenSaved(true);
+                        setTimeout(() => setXBearTokenSaved(false), 2500);
+                      } catch (err: any) {
+                        alert('Failed to save X Bearer Token: ' + err);
                       }
                     }}
+                    disabled={!xBearTokenInput.trim()}
                   >
-                    Save
+                    Save Token
                   </button>
+
+                  <button
+                    className="btn btn-accent btn-sm"
+                    onClick={async () => {
+                      const tokenToTest = xBearTokenInput.trim() || savedXBearToken;
+                      if (!tokenToTest) {
+                        setXBearTestResult('Please enter or select a token first.');
+                        return;
+                      }
+
+                      setXBearTestResult('Testing X connection...');
+                      setXBearError('');
+
+                      try {
+                        const result = await invoke<string>('test_x_bearer_token', { token: tokenToTest });
+                        setXBearTestResult(`✅ ${result}`);
+                      } catch (err: any) {
+                        setXBearTestResult(`❌ ${err}`);
+                      }
+                    }}
+                    disabled={!(xBearTokenInput.trim() || savedXBearToken)}
+                  >
+                    Test Connection
+                  </button>
+
                   {savedXBearToken && (
                     <button
                       className="btn btn-ghost btn-sm text-error"
                       onClick={async () => {
-                        if (confirm('Remove saved X Bearer Token?')) {
-                          try {
-                            await invoke('delete_setting', { key: 'x_bearer_token' })
-                            setSavedXBearToken('')
-                          } catch (err) {
-                            alert('Failed to remove token: ' + err)
-                          }
+                        if (!confirm('Remove the saved X Bearer Token?')) return;
+                        try {
+                          await invoke('delete_setting', { key: 'x_bearer_token' });
+                          setSavedXBearToken('');
+                          setXBearTokenInput('');
+                          setXBearTestResult('');
+                        } catch (err: any) {
+                          alert('Failed to remove token: ' + err);
                         }
                       }}
                     >
-                      Remove
+                      Reset Token
                     </button>
                   )}
+
+                  {xBearTokenSaved && (
+                    <div className="badge badge-success gap-2 whitespace-nowrap">
+                      Saved!
+                    </div>
+                  )}
                 </div>
+
+                {xBearError && (
+                  <div className="alert alert-error alert-sm mt-2 text-sm">
+                    {xBearError}
+                  </div>
+                )}
+
+                {xBearTestResult && (
+                  <div className={`alert alert-sm mt-2 whitespace-pre-wrap text-sm ${xBearTestResult.startsWith('✅') ? 'alert-success' : 'alert-error'}`}>
+                    {xBearTestResult}
+                  </div>
+                )}
               </div>
             </div>
           </div>
