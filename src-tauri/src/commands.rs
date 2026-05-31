@@ -377,31 +377,19 @@ mod tests {
 
 #[tauri::command]
 pub async fn fetch_research_sources(state: State<'_, AppState>) -> Result<Vec<research::ResearchSource>, String> {
-    // Load keys
+    // Load xAI key (needed for Grok research)
     let xai_key = get_setting_db(&state.db, "xai_api_key".to_string())
-        .await?
-        .unwrap_or_default();
-    let x_bearer_token = get_setting_db(&state.db, "x_bearer_token".to_string())
         .await?
         .unwrap_or_default();
 
     let mut sources = research::fetch_rss_sources().await?;
 
-    // Primary X source: Use Grok to find high-signal / trending posts
-    // (much better quality than raw keyword search)
+    // X content is now discovered primarily via Grok (see fetch_grok_discovered_x_sources)
+    // Direct X API usage has been removed.
     if !xai_key.is_empty() {
         match research::fetch_grok_discovered_x_sources(&xai_key).await {
             Ok(grok_sources) => sources.extend(grok_sources),
             Err(e) => log::warn!("Grok X discovery failed: {}", e),
-        }
-    }
-
-    // Fallback / supplementary: Direct X API search (if bearer token exists)
-    if !x_bearer_token.is_empty() {
-        let x_query = "(Tesla OR TSLA OR Cybertruck OR Optimus OR Robotaxi) lang:en -is:retweet";
-        match research::fetch_x_sources(&x_bearer_token, x_query).await {
-            Ok(direct_sources) => sources.extend(direct_sources),
-            Err(e) => log::warn!("Direct X search failed: {}", e),
         }
     }
 
@@ -419,23 +407,7 @@ pub async fn fetch_research_sources(state: State<'_, AppState>) -> Result<Vec<re
     Ok(sources)
 }
 
-#[tauri::command]
-pub async fn test_x_bearer_token(token: String) -> Result<String, String> {
-    if token.trim().is_empty() {
-        return Err("No token provided".to_string());
-    }
 
-    // Lightweight test: try to fetch a very small number of recent tweets
-    let test_query = "Tesla lang:en -is:retweet";
-    match research::fetch_x_sources(&token, test_query).await {
-        Ok(results) => {
-            Ok(format!("Success! X API responded. Found {} recent results.", results.len()))
-        }
-        Err(e) => {
-            Err(format!("X API test failed: {}", e))
-        }
-    }
-}
 
 // ============================================
 // Settings / API Keys (persisted in DB for now)

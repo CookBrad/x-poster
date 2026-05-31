@@ -3,7 +3,7 @@
 > **Living document.** This file captures architecture decisions, design discussions, tradeoffs, and the current task breakdown.
 > Update it after any significant conversation or when priorities shift.
 >
-> Last updated: 2025-06-02 (Grok is now primary for discovering high-signal X posts instead of raw keyword search)
+> Last updated: 2025-06-02 (Completely removed direct X Developer API usage; Grok is now the only source for X posts)
 
 ---
 
@@ -272,6 +272,22 @@ Add new questions here as they come up. Resolve and move to Design Decisions whe
 This section captures key discussions from conversations so future sessions can pick up context quickly.
 
 **Format:** Add new entries at the **top**.
+
+---
+
+### 2025-06-02 — Completely removed direct X Developer API
+
+**Decision (per user request):**
+- Direct usage of the X (Twitter) Developer API has been **completely removed**.
+- All X post discovery now goes exclusively through Grok via the xAI API (`fetch_grok_discovered_x_sources`).
+- The `x_bearer_token` setting, its UI in Settings, the `test_x_bearer_token` command, and the `fetch_x_sources` function have all been deleted.
+
+**Rationale:**
+The user prefers relying on Grok for higher-quality, curated X content rather than raw API search.
+
+**Impact:**
+- Users no longer need an X Developer account or Bearer Token.
+- Research quality for X content now depends entirely on Grok's tool use / knowledge.
 
 ---
 
