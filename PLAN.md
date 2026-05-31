@@ -3,7 +3,7 @@
 > **Living document.** This file captures architecture decisions, design discussions, tradeoffs, and the current task breakdown.
 > Update it after any significant conversation or when priorities shift.
 >
-> Last updated: 2025-06-02 (API key now editable + persistable in Settings UI; switched test model to grok-3)
+> Last updated: 2025-06-02 (SQLite persistence + Rust draft commands fully wired to Queue UI via db.ts; tests required for new work; preparing GitHub push)
 
 ---
 
@@ -186,10 +186,12 @@ This is the minimum that makes the app actually useful.
   - Write at least one example test for an existing command (e.g. `create_draft` or `get_drafts`) to prove the pattern works
   - Document the testing workflow in PLAN.md under Testing Strategy
 
-- [ ] **T-001** — Wire React frontend to Rust draft commands
-  - Replace placeholder cards with real data from `get_drafts`
-  - Implement approve / skip / delete actions calling the backend
-  - Add loading + error states
+- [x] **T-001** — Wire React frontend to Rust draft commands (mostly complete)
+  - [x] Replace placeholder cards with real data from `get_drafts`
+  - [x] Implement approve / skip / delete actions calling the backend (via new `db.ts`)
+  - [x] Add loading + error states
+  - [ ] Add automated frontend tests for `db.ts` and QueueTab (in progress — user requested)
+  - Note: "Create Test Draft" helper added for fast manual verification. Full "Research → Generate" flow will feed this queue later (T-006).
 
 - [ ] **T-002** — Build basic draft editing UI
   - Click-to-edit text in a card or modal
@@ -270,6 +272,37 @@ Add new questions here as they come up. Resolve and move to Design Decisions whe
 This section captures key discussions from conversations so future sessions can pick up context quickly.
 
 **Format:** Add new entries at the **top**.
+
+---
+
+### 2025-06-02 — Wired Queue UI to real SQLite persistence + created db.ts layer + push preparation
+
+**Participants:** User + Grok
+
+**What was built:**
+- Created `src/lib/db.ts`: clean typed wrappers around all Tauri draft commands (`createDraft`, `getDrafts`, `updateDraft`, `deleteDraft`, `markDraftPosted`, etc.).
+- Fully replaced the placeholder Queue tab with a real database-backed implementation (`QueueTab` component).
+- Added "Create Test Draft" button for immediate manual testing of persistence.
+- All Queue actions (skip, delete, approve/post simulation) now call the real Rust commands and refresh from DB.
+- Drafts now persist across app restarts.
+
+**Testing commitment:**
+- User explicitly requested that tests be written for all new functionality going forward.
+- This session focused on the integration layer; dedicated frontend tests for `db.ts` (mocked invoke) and QueueTab component behavior will be added before considering the work complete.
+
+**Git / Delivery:**
+- All changes committed locally.
+- User requested push to GitHub. (Note: At time of this entry, no `origin` remote was configured in the repo.)
+
+**PLAN.md updates:**
+- Updated task progress for T-001 (Wire frontend to Rust commands).
+- Reinforced the "Tests for every new feature" rule in Guiding Principles and Definition of Done.
+- Added this session to the log.
+
+**Next immediate actions (per user request):**
+- Add automated tests for the new `db.ts` module and QueueTab component.
+- Update PLAN.md with test results.
+- Configure GitHub remote and push.
 
 ---
 
