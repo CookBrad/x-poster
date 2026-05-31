@@ -1,4 +1,4 @@
-use crate::AppState;
+use crate::{research, AppState};
 use serde::{Deserialize, Serialize};
 use sqlx::sqlite::SqlitePool;
 use tauri::State;
@@ -369,6 +369,22 @@ mod tests {
 
         assert_eq!(value, Some("".to_string()));
     }
+}
+
+// ============================================
+// Research Commands (T-003 / T-004 / T-006)
+// ============================================
+
+#[tauri::command]
+pub async fn fetch_research_sources() -> Result<Vec<research::ResearchSource>, String> {
+    // For now we start with RSS only. X search will be added next.
+    let sources = research::fetch_rss_sources().await?;
+
+    // TODO: Add X sources once credentials are properly wired
+    // let x_sources = research::fetch_x_sources("Tesla OR TSLA OR Optimus OR Cybertruck").await?;
+    // sources.extend(x_sources);
+
+    Ok(sources)
 }
 
 // ============================================

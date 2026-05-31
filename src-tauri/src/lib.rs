@@ -1,4 +1,5 @@
 mod commands;
+mod research;
 
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
 use std::path::PathBuf;
@@ -56,6 +57,7 @@ pub fn run() {
         commands::get_setting,
         commands::set_setting,
         commands::delete_setting,
+        commands::fetch_research_sources,
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

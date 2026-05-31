@@ -67,6 +67,24 @@ export async function markDraftPosted(id: string, xPostId: string): Promise<void
   return invoke('mark_draft_posted', { id, xPostId })
 }
 
+// ============================================
+// Research (T-003 / T-004)
+// ============================================
+
+export interface ResearchSource {
+  id: string;
+  title: string;
+  content: string;
+  url: string;
+  published_at: string | null;
+  source_name: string;
+  source_type: string;
+}
+
+export async function fetchResearchSources(): Promise<ResearchSource[]> {
+  return invoke('fetch_research_sources');
+}
+
 /**
  * Helper to parse sources from a draft
  */

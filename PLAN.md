@@ -3,7 +3,7 @@
 > **Living document.** This file captures architecture decisions, design discussions, tradeoffs, and the current task breakdown.
 > Update it after any significant conversation or when priorities shift.
 >
-> Last updated: 2025-06-02 (Implemented "Delete Post" UX distinction for posted items + added test)
+> Last updated: 2025-06-02 (Started Real Research + Draft Generation: RSS fetching + Research tab wired)
 
 ---
 
@@ -272,6 +272,22 @@ Add new questions here as they come up. Resolve and move to Design Decisions whe
 This section captures key discussions from conversations so future sessions can pick up context quickly.
 
 **Format:** Add new entries at the **top**.
+
+---
+
+### 2025-06-02 — Started Real Research + Draft Generation (#1)
+
+**What was built:**
+- Added `reqwest` + `feed-rs` dependencies.
+- Created `src-tauri/src/research.rs` with real RSS fetching from key Tesla/EV sources (Electrek, Teslarati, InsideEVs, etc.).
+- Exposed `fetch_research_sources` Tauri command.
+- Wired the Research tab to actually call the backend and display live sources.
+- Placeholder X search function added for future work.
+
+**Next for this feature:**
+- Connect research sources → Grok generation (T-005).
+- Create Draft records from generated output and surface them in the Queue.
+- Add X semantic/keyword search once credentials are better integrated.
 
 ---
 

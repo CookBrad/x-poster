@@ -8,6 +8,7 @@ import {
   deleteDraft, 
   markDraftPosted,
   parseSources,
+  fetchResearchSources,
   type Draft
 } from './lib/db'
 
@@ -94,11 +95,7 @@ function App() {
         )}
 
         {activeTab === 'research' && (
-          <div>
-            <h2 className="text-2xl font-semibold mb-4">Manual Research</h2>
-            <p className="mb-4">Trigger on-demand research cycles and see live source fetching (X + RSS).</p>
-            <button className="btn btn-primary">Run Research Cycle (mock)</button>
-          </div>
+          <ResearchTab />
         )}
 
         {activeTab === 'settings' && (
@@ -196,18 +193,28 @@ function QueueTab() {
   }
 
   const handleDelete = async (draft: Draft) => {
-    const isPosted = draft.status === 'posted'
-    const confirmMessage = isPosted 
-      ? 'Delete this posted item from your local history? (This will not delete the tweet from X)'
-      : 'Delete this draft?'
+    const isPosted = draft.status === 'posted';
+    const itemType = isPosted ? 'post' : 'draft';
 
-    if (!confirm(confirmMessage)) return
+    // Only confirm for posted items (more destructive action)
+    if (isPosted) {
+      const confirmed = confirm(
+        'Delete this posted item from your local history?\n\n(This will NOT delete the actual tweet from X)'
+      );
+      if (!confirmed) return;
+    }
+
+    // Optimistic update: remove the card from the UI immediately
+    setDrafts(prev => prev.filter(d => d.id !== draft.id));
 
     try {
-      await deleteDraft(draft.id)
-      await loadDrafts()
+      await deleteDraft(draft.id);
+      // Re-sync with the database to stay consistent
+      await loadDrafts();
     } catch (e: any) {
-      alert(`Failed to delete ${isPosted ? 'post' : 'draft'}: ` + e)
+      alert(`Failed to delete ${itemType}: ${e?.message || e}`);
+      // Rollback the optimistic removal on failure
+      await loadDrafts();
     }
   }
 
@@ -318,6 +325,87 @@ function QueueTab() {
       )}
     </div>
   )
+}
+
+// ============================================
+// ResearchTab - Live research + generation
+// ============================================
+function ResearchTab() {
+  const [sources, setSources] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const runResearch = async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const results = await fetchResearchSources();
+      setSources(results);
+    } catch (e: any) {
+      console.error(e);
+      setError('Failed to fetch research sources. Check your internet connection.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div>
+      <h2 className="text-2xl font-semibold mb-2">Manual Research</h2>
+      <p className="mb-4 text-sm opacity-70">
+        Pulls recent relevant content from key Tesla/EV RSS feeds. X search coming soon.
+      </p>
+
+      <button 
+        className="btn btn-primary mb-6" 
+        onClick={runResearch}
+        disabled={loading}
+      >
+        {loading ? 'Researching...' : 'Run Research Now'}
+      </button>
+
+      {error && <div className="alert alert-error mb-4">{error}</div>}
+
+      {sources.length > 0 && (
+        <div>
+          <h3 className="text-lg font-semibold mb-3">Recent Sources Found ({sources.length})</h3>
+          <div className="space-y-3">
+            {sources.slice(0, 10).map((source, index) => (
+              <div key={index} className="card bg-base-100 shadow-sm">
+                <div className="card-body py-3">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <a 
+                        href={source.url} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="font-medium hover:underline"
+                      >
+                        {source.title}
+                      </a>
+                      <div className="text-xs opacity-60 mt-0.5">
+                        {source.source_name} • {source.published_at ? new Date(source.published_at).toLocaleDateString() : 'Unknown date'}
+                      </div>
+                    </div>
+                    <div className="badge badge-outline badge-sm">{source.source_type}</div>
+                  </div>
+                  <p className="text-sm line-clamp-2 opacity-80 mt-1">{source.content}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-6 alert alert-info">
+            <span>
+              Next step: We will send these sources to Grok to generate fresh draft posts. 
+              (Generation flow coming in the next iteration)
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default App
