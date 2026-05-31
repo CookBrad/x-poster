@@ -376,13 +376,25 @@ mod tests {
 // ============================================
 
 #[tauri::command]
-pub async fn fetch_research_sources() -> Result<Vec<research::ResearchSource>, String> {
-    // For now we start with RSS only. X search will be added next.
-    let sources = research::fetch_rss_sources().await?;
+pub async fn fetch_research_sources(state: State<'_, AppState>) -> Result<Vec<research::ResearchSource>, String> {
+    // Load X Bearer Token from settings (user should paste it in Settings)
+    let x_bearer_token = get_setting_db(&state.db, "x_bearer_token".to_string())
+        .await?
+        .unwrap_or_default();
 
-    // TODO: Add X sources once credentials are properly wired
-    // let x_sources = research::fetch_x_sources("Tesla OR TSLA OR Optimus OR Cybertruck").await?;
-    // sources.extend(x_sources);
+    let mut sources = research::fetch_rss_sources().await?;
+
+    // X search for Tesla/TSLA/Elon company topics (non-political filter via query)
+    let x_query = "(Tesla OR TSLA OR Cybertruck OR Optimus OR \"Model Y\" OR FSD) -is:retweet lang:en -is:reply";
+    match research::fetch_x_sources(&x_bearer_token, x_query).await {
+        Ok(x_sources) => sources.extend(x_sources),
+        Err(e) => {
+            log::warn!("X search skipped or failed (add x_bearer_token in Settings): {}", e);
+        }
+    }
+
+    sources.sort_by(|a, b| b.published_at.cmp(&a.published_at));
+    sources.truncate(30);
 
     Ok(sources)
 }

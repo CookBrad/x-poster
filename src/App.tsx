@@ -354,7 +354,8 @@ function ResearchTab() {
     <div>
       <h2 className="text-2xl font-semibold mb-2">Manual Research</h2>
       <p className="mb-4 text-sm opacity-70">
-        Pulls recent relevant content from key Tesla/EV RSS feeds. X search coming soon.
+        Pulls recent relevant content from Tesla/EV RSS feeds + X. <br />
+        <span className="text-warning">To enable X search, add your X Bearer Token in Settings as <code>x_bearer_token</code>.</span>
       </p>
 
       <button 
@@ -396,10 +397,9 @@ function ResearchTab() {
             ))}
           </div>
 
-          <div className="mt-6 alert alert-info">
+          <div className="mt-6 alert alert-success">
             <span>
-              Next step: We will send these sources to Grok to generate fresh draft posts. 
-              (Generation flow coming in the next iteration)
+              Sources loaded. Ready to send to Grok for draft generation (coming next).
             </span>
           </div>
         </div>
