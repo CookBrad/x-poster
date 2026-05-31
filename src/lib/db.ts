@@ -53,7 +53,8 @@ export async function updateDraft(id: string, input: UpdateDraftInput): Promise<
 }
 
 /**
- * Delete a draft
+ * Delete a draft or posted item.
+ * For posted items this removes the local record only (does not delete from X).
  */
 export async function deleteDraft(id: string): Promise<void> {
   return invoke('delete_draft', { id })

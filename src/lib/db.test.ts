@@ -88,6 +88,12 @@ describe('db.ts - Tauri command wrappers', () => {
       expect(mockInvoke).toHaveBeenCalledWith('delete_draft', { id: 'draft-xyz' })
     })
 
+    it('allows deleting a posted item (local only)', async () => {
+      mockInvoke.mockResolvedValueOnce(undefined)
+      await deleteDraft('posted-draft-456')
+      expect(mockInvoke).toHaveBeenCalledWith('delete_draft', { id: 'posted-draft-456' })
+    })
+
     it('calls mark as posted with x_post_id', async () => {
       mockInvoke.mockResolvedValueOnce(undefined)
       await markDraftPosted('draft-123', 'x_post_98765')

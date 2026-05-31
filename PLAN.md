@@ -3,7 +3,7 @@
 > **Living document.** This file captures architecture decisions, design discussions, tradeoffs, and the current task breakdown.
 > Update it after any significant conversation or when priorities shift.
 >
-> Last updated: 2025-06-02 (Pushed to GitHub; added db.test.ts with 7 new tests; all 15 frontend + 6 backend tests passing)
+> Last updated: 2025-06-02 (Implemented "Delete Post" UX distinction for posted items + added test)
 
 ---
 
@@ -272,6 +272,21 @@ Add new questions here as they come up. Resolve and move to Design Decisions whe
 This section captures key discussions from conversations so future sessions can pick up context quickly.
 
 **Format:** Add new entries at the **top**.
+
+---
+
+### 2025-06-02 — Implemented "Delete Post" functionality (UX + tests)
+
+**What was done:**
+- Made the delete action context-aware in the Queue:
+  - For pending drafts → "Delete Draft"
+  - For posted items → "Delete Post" (with clear confirmation that it only removes the local record, not the tweet on X)
+- Updated `handleDelete` to receive the full draft object and adjust messaging.
+- Added a dedicated test case in `db.test.ts` for deleting posted items.
+- Updated JSDoc in `db.ts`.
+- Updated PLAN.md.
+
+This provides the basic "delete post" experience the user requested while we build out full X deletion (T-007 / future).
 
 ---
 

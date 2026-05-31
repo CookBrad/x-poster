@@ -195,13 +195,19 @@ function QueueTab() {
     }
   }
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Delete this draft?')) return
+  const handleDelete = async (draft: Draft) => {
+    const isPosted = draft.status === 'posted'
+    const confirmMessage = isPosted 
+      ? 'Delete this posted item from your local history? (This will not delete the tweet from X)'
+      : 'Delete this draft?'
+
+    if (!confirm(confirmMessage)) return
+
     try {
-      await deleteDraft(id)
+      await deleteDraft(draft.id)
       await loadDrafts()
     } catch (e: any) {
-      alert('Failed to delete draft: ' + e)
+      alert(`Failed to delete ${isPosted ? 'post' : 'draft'}: ` + e)
     }
   }
 
@@ -299,9 +305,9 @@ function QueueTab() {
                     
                     <button 
                       className="btn btn-error btn-sm btn-outline"
-                      onClick={() => handleDelete(draft.id)}
+                      onClick={() => handleDelete(draft)}
                     >
-                      Delete
+                      {draft.status === 'posted' ? 'Delete Post' : 'Delete Draft'}
                     </button>
                   </div>
                 </div>
