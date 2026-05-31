@@ -437,3 +437,23 @@ pub async fn set_setting_db(db: &SqlitePool, key: String, value: String) -> Resu
 
     Ok(())
 }
+
+#[tauri::command]
+pub async fn delete_setting(
+    state: State<'_, AppState>,
+    key: String,
+) -> Result<(), String> {
+    delete_setting_db(&state.db, key).await
+}
+
+pub async fn delete_setting_db(db: &SqlitePool, key: String) -> Result<(), String> {
+    ensure_settings_table(db).await;
+
+    sqlx::query("DELETE FROM settings WHERE key = ?")
+        .bind(&key)
+        .execute(db)
+        .await
+        .map_err(|e| format!("Failed to delete setting: {}", e))?;
+
+    Ok(())
+}
