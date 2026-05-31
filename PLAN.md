@@ -3,7 +3,7 @@
 > **Living document.** This file captures architecture decisions, design discussions, tradeoffs, and the current task breakdown.
 > Update it after any significant conversation or when priorities shift.
 >
-> Last updated: 2025-06-02 (SQLite persistence + Rust draft commands fully wired to Queue UI via db.ts; tests required for new work; preparing GitHub push)
+> Last updated: 2025-06-02 (Pushed to GitHub; added db.test.ts with 7 new tests; all 15 frontend + 6 backend tests passing)
 
 ---
 
@@ -272,6 +272,32 @@ Add new questions here as they come up. Resolve and move to Design Decisions whe
 This section captures key discussions from conversations so future sessions can pick up context quickly.
 
 **Format:** Add new entries at the **top**.
+
+---
+
+### 2025-06-02 — Pushed to GitHub + added comprehensive tests for db layer
+
+**Participants:** User + Grok
+
+**Actions taken:**
+- Successfully pushed all commits to GitHub using the user's `github-main` SSH alias:
+  - Remote added as: `git@github-main:CookBrad/x-poster.git`
+  - Branch `main` pushed and tracking set up.
+- Added `src/lib/db.test.ts` with 7 Vitest tests covering the new persistence wrappers:
+  - Happy paths for create/get/update/delete/markPosted
+  - Error propagation
+- All tests now passing:
+  - Backend: 6/6 Rust tests (cargo test)
+  - Frontend: 15/15 tests (npm test) including the new db tests + existing ApiKeySettings and example tests
+
+**PLAN.md updates:**
+- Updated "Last updated" line
+- Added this session log entry
+- Marked T-001 progress (frontend wiring + tests now done)
+
+**Outcome:**
+- Repository is now live on GitHub: https://github.com/CookBrad/x-poster
+- Strong test coverage on the recently added persistence layer (per user's explicit request).
 
 ---
 
