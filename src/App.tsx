@@ -493,8 +493,8 @@ function ResearchTab() {
     <div>
       <h2 className="text-2xl font-semibold mb-2">Manual Research</h2>
       <p className="mb-4 text-sm opacity-70">
-        Pulls recent relevant content from Tesla/EV RSS feeds + X. <br />
-        <span className="text-warning">To enable X search, add your X Bearer Token in Settings as <code>x_bearer_token</code>.</span>
+        Uses Grok to discover high-signal Tesla/Elon posts on X + pulls from key RSS feeds.<br />
+        <span className="text-warning">Requires your xAI API key (and optionally X Bearer Token) in Settings.</span>
       </p>
 
       <button 
@@ -531,6 +531,9 @@ function ResearchTab() {
                     <div className="badge badge-outline badge-sm">{source.source_type}</div>
                   </div>
                   <p className="text-sm line-clamp-2 opacity-80 mt-1">{source.content}</p>
+                  {source.source_type === 'x_grok' && (
+                    <div className="text-[10px] text-emerald-600 font-medium mt-1">★ Grok-curated high-signal post</div>
+                  )}
                 </div>
               </div>
             ))}

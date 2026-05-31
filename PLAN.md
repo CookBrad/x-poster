@@ -3,7 +3,7 @@
 > **Living document.** This file captures architecture decisions, design discussions, tradeoffs, and the current task breakdown.
 > Update it after any significant conversation or when priorities shift.
 >
-> Last updated: 2025-06-02 (Started Real Research + Draft Generation: RSS fetching + Research tab wired)
+> Last updated: 2025-06-02 (Grok is now primary for discovering high-signal X posts instead of raw keyword search)
 
 ---
 
@@ -272,6 +272,26 @@ Add new questions here as they come up. Resolve and move to Design Decisions whe
 This section captures key discussions from conversations so future sessions can pick up context quickly.
 
 **Format:** Add new entries at the **top**.
+
+---
+
+### 2025-06-02 — Switched X research to use Grok as primary discovery method
+
+**Decision:**
+- Grok is now the **primary** way to find high-quality/trending Tesla/Elon posts on X.
+- Direct X API search is kept only as a supplementary/fallback source.
+- RSS feeds remain as a parallel source.
+
+**Rationale:**
+Raw keyword search on X (even with engagement sorting and broad queries) produces too much low-signal noise. Grok is significantly better at identifying substantive, high-signal posts that are actually worth turning into original commentary.
+
+**Implementation:**
+- New function `fetch_grok_discovered_x_sources()` that asks Grok for recent high-signal posts with strict quality instructions ("fresh take", non-political, company/tech focus).
+- `fetch_research_sources` now calls Grok first for X content, then falls back to direct API if a bearer token is present.
+- Frontend Research tab now shows "Grok-curated high-signal post" badges for these items.
+
+**Prompt strategy:**
+Very strict system prompt emphasizing fresh analysis over regurgitation, with structured JSON output.
 
 ---
 

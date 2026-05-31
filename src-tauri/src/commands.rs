@@ -377,25 +377,45 @@ mod tests {
 
 #[tauri::command]
 pub async fn fetch_research_sources(state: State<'_, AppState>) -> Result<Vec<research::ResearchSource>, String> {
-    // Load X Bearer Token from settings (user should paste it in Settings)
+    // Load keys
+    let xai_key = get_setting_db(&state.db, "xai_api_key".to_string())
+        .await?
+        .unwrap_or_default();
     let x_bearer_token = get_setting_db(&state.db, "x_bearer_token".to_string())
         .await?
         .unwrap_or_default();
 
     let mut sources = research::fetch_rss_sources().await?;
 
-    // X search for Tesla/TSLA/Elon company topics (non-political filter via query)
-    let x_query = "(Tesla OR TSLA OR Cybertruck OR Optimus OR \"Model Y\" OR FSD) -is:retweet lang:en -is:reply";
-    match research::fetch_x_sources(&x_bearer_token, x_query).await {
-        Ok(x_sources) => sources.extend(x_sources),
-        Err(e) => {
-            log::warn!("X search skipped or failed (add x_bearer_token in Settings): {}", e);
+    // Primary X source: Use Grok to find high-signal / trending posts
+    // (much better quality than raw keyword search)
+    if !xai_key.is_empty() {
+        match research::fetch_grok_discovered_x_sources(&xai_key).await {
+            Ok(grok_sources) => sources.extend(grok_sources),
+            Err(e) => log::warn!("Grok X discovery failed: {}", e),
         }
     }
 
-    sources.sort_by(|a, b| b.published_at.cmp(&a.published_at));
-    sources.truncate(30);
+    // Fallback / supplementary: Direct X API search (if bearer token exists)
+    if !x_bearer_token.is_empty() {
+        let x_query = "(Tesla OR TSLA OR Cybertruck OR Optimus OR Robotaxi) lang:en -is:retweet";
+        match research::fetch_x_sources(&x_bearer_token, x_query).await {
+            Ok(direct_sources) => sources.extend(direct_sources),
+            Err(e) => log::warn!("Direct X search failed: {}", e),
+        }
+    }
 
+    // Final sort: Grok-discovered items first, then by recency
+    sources.sort_by(|a, b| {
+        let a_prio = if a.source_type == "x_grok" { 0 } else { 1 };
+        let b_prio = if b.source_type == "x_grok" { 0 } else { 1 };
+        if a_prio != b_prio {
+            return a_prio.cmp(&b_prio);
+        }
+        b.published_at.cmp(&a.published_at)
+    });
+
+    sources.truncate(30);
     Ok(sources)
 }
 
