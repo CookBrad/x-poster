@@ -3,7 +3,7 @@
 > **Living document.** This file captures architecture decisions, design discussions, tradeoffs, and the current task breakdown.
 > Update it after any significant conversation or when priorities shift.
 >
-> Last updated: 2025-06-02 (Historical research list now supports real-time search + adjustable pagination, default 25 items per page)
+> Last updated: 2025-06-02 (Research scope narrowed to Musk companies only — no general EV news; InsideEVs removed, Grok prompt made stricter)
 
 ---
 
@@ -314,6 +314,13 @@ This replaces the old "refresh" behavior with proper historical tracking as requ
 - Historical list now supports real-time search across title, content, and source_name.
 - Adjustable page size (10/25/50/100 options), default 25.
 - Standard pagination UI with "Showing X–Y of Z" (reflects search filtering).
+
+**Scope Narrowing (user request):**
+- Research is now strictly limited to Elon Musk's companies only: Tesla (vehicles, FSD, Optimus, Robotaxi, energy), SpaceX (Starlink, Starship), xAI (Grok), Neuralink, and The Boring Company.
+- General EV news and other automakers are explicitly excluded.
+- InsideEVs RSS feed was removed.
+- Grok discovery prompt was significantly strengthened with explicit "Musk companies only" rules and rejection criteria.
+- Research tab header and description updated to clearly communicate the narrow focus.
 
 ---
 

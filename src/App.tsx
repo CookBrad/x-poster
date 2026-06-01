@@ -386,9 +386,10 @@ function ResearchTab() {
 
   return (
     <div>
-      <h2 className="text-2xl font-semibold mb-2">Research</h2>
+      <h2 className="text-2xl font-semibold mb-2">Research — Musk Companies Only</h2>
       <p className="mb-4 text-sm opacity-70">
-        Uses Grok to discover high-signal Tesla/Elon posts on X + pulls from key RSS feeds.
+        Focused strictly on <strong>Elon Musk's companies</strong> (Tesla, SpaceX, xAI, Neuralink, Boring Company).<br />
+        General EV news is excluded.
       </p>
 
       <div className="flex gap-2 mb-4">

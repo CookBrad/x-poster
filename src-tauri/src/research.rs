@@ -27,9 +27,10 @@ pub struct ResearchSource {
 
 /// Fetches recent items from a list of RSS feeds relevant to Tesla/TSLA/Elon.
 pub async fn fetch_rss_sources() -> Result<Vec<ResearchSource>, String> {
+    // Focused strictly on Musk companies (Tesla, SpaceX, xAI, Neuralink, Boring Company).
+    // General EV news sources (e.g. InsideEVs) have been removed per user request.
     let feeds = vec![
         "https://www.teslarati.com/feed/",
-        "https://insideevs.com/feed/",
         "https://feeds.feedburner.com/TeslaMotorsClub",
     ];
 
@@ -156,16 +157,15 @@ pub async fn fetch_grok_discovered_x_sources(xai_api_key: &str) -> Result<Vec<Re
         .build()
         .map_err(|e| e.to_string())?;
 
-    let system_prompt = r#"You are an expert researcher focused on Tesla, SpaceX, Elon Musk's companies, and related technology (FSD, Optimus, Cybertruck, Robotaxi, energy, etc.).
+    let system_prompt = r#"You are an expert researcher focused EXCLUSIVELY on Elon Musk's companies: Tesla (vehicles, FSD, Optimus, Robotaxi, energy/Megapack, Dojo), SpaceX (Starlink, Starship, Falcon), xAI (Grok), Neuralink, and The Boring Company.
 
-Your job is to find the most substantive, high-signal, and interesting recent posts on X (Twitter) about these topics.
-
-Rules (strict):
-- Only include posts that offer real information, analysis, implications, or novel angles.
-- Strongly prefer "fresh takes" over simple news reposts or hype.
+CRITICAL RULES — VIOLATIONS WILL BE REJECTED:
+- ONLY include posts about Tesla, SpaceX, xAI, Neuralink, or Boring Company.
+- DO NOT include content about other EV companies (Rivian, Lucid, GM, Ford, BYD, Volkswagen, etc.), general EV market news, or non-Musk autonomous driving efforts.
+- Only include posts that offer real information, analysis, implications, technical details, or novel angles.
+- Strongly prefer "fresh takes" and original commentary over simple news reposts or hype.
 - Avoid low-quality spam, memes without substance, political content, or obvious engagement bait.
-- Prioritize posts from credible or high-signal accounts when possible.
-- Focus on company/technology developments rather than pure stock price movement unless there's significant analysis.
+- Prioritize posts from credible or high-signal accounts (e.g. @elonmusk, @Tesla, @SpaceX, @WholeMarsBlog, @SawyerMerritt, etc.).
 
 Return ONLY a JSON array of objects with this exact structure (no extra text):
 
@@ -178,9 +178,9 @@ Return ONLY a JSON array of objects with this exact structure (no extra text):
   }
 ]
 
-If you cannot find any high-quality posts, return an empty array []."#;
+If you cannot find any high-quality posts that meet the strict Musk-companies-only criteria, return an empty array []."#;
 
-    let user_prompt = "Find the most interesting and substantive recent posts (last 48-72 hours) about Tesla, its products, technology, or Elon Musk's related companies on X. Focus on high-signal content.";
+    let user_prompt = "Find the most interesting and substantive recent posts (last 48-72 hours) strictly about Elon Musk's companies (Tesla, SpaceX, xAI, Neuralink, Boring Company). Ignore all other EV companies and general EV news. Prioritize high-signal, non-political content with real substance or novel angles.";
 
     let body = serde_json::json!({
         "model": "grok-3",  // or grok-3-mini if we want cheaper/faster
