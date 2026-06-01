@@ -3,7 +3,7 @@
 > **Living document.** This file captures architecture decisions, design discussions, tradeoffs, and the current task breakdown.
 > Update it after any significant conversation or when priorities shift.
 >
-> Last updated: 2025-06-02 (Research scope narrowed to Musk companies only — no general EV news; InsideEVs removed, Grok prompt made stricter)
+> Last updated: 2025-06-02 (Added clear UI messaging: X posts only come via Grok and require an xAI API key)
 
 ---
 
@@ -321,6 +321,11 @@ This replaces the old "refresh" behavior with proper historical tracking as requ
 - InsideEVs RSS feed was removed.
 - Grok discovery prompt was significantly strengthened with explicit "Musk companies only" rules and rejection criteria.
 - Research tab header and description updated to clearly communicate the narrow focus.
+
+**User question — "Why only RSS, no X posts?"**
+- Explained that X posts now come **exclusively** through Grok (direct X API was removed earlier at user's request).
+- Added visible breakdown in the Current research view: RSS count vs X-via-Grok count.
+- Added a helpful warning alert when a research run returns 0 X sources via Grok, reminding the user that a valid xAI API key must be set in Settings.
 
 ---
 

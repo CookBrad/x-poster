@@ -389,7 +389,8 @@ function ResearchTab() {
       <h2 className="text-2xl font-semibold mb-2">Research — Musk Companies Only</h2>
       <p className="mb-4 text-sm opacity-70">
         Focused strictly on <strong>Elon Musk's companies</strong> (Tesla, SpaceX, xAI, Neuralink, Boring Company).<br />
-        General EV news is excluded.
+        General EV news is excluded.<br />
+        <span className="text-warning text-xs">X posts are discovered via Grok — your xAI API key must be set in Settings.</span>
       </p>
 
       <div className="flex gap-2 mb-4">
@@ -424,7 +425,25 @@ function ResearchTab() {
               <h3 className="text-lg font-semibold mb-1">
                 Latest Research Run — {new Date(currentRun.run.run_at).toLocaleString()}
               </h3>
-              <p className="text-xs opacity-60 mb-4">{currentRun.sources.length} sources</p>
+
+              {/* Source breakdown */}
+              {(() => {
+                const rssCount = currentRun.sources.filter(s => s.source_type === 'rss').length;
+                const grokXCount = currentRun.sources.filter(s => s.source_type === 'x_grok').length;
+                return (
+                  <p className="text-xs mb-4 opacity-75">
+                    {currentRun.sources.length} total sources → {rssCount} from RSS, {grokXCount} from X (via Grok)
+                  </p>
+                );
+              })()}
+
+              {currentRun.sources.every(s => s.source_type !== 'x_grok') && (
+                <div className="alert alert-warning mb-4 text-sm">
+                  No X posts were returned by Grok this time. 
+                  Make sure your <strong>xAI API key</strong> is set in Settings. 
+                  Grok is currently the only source for X content.
+                </div>
+              )}
 
               <div className="space-y-3">
                 {currentRun.sources.map((source, index) => (
@@ -457,7 +476,8 @@ function ResearchTab() {
             </div>
           ) : (
             <div className="alert alert-info">
-              No research run yet. Click "Run Research Now" to start.
+              No research run yet. Click "Run Research Now" to start.<br />
+              <span className="text-xs">Note: X posts come via Grok — make sure your xAI API key is configured in Settings.</span>
             </div>
           )}
         </div>
