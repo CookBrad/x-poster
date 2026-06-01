@@ -3,7 +3,7 @@
 > **Living document.** This file captures architecture decisions, design discussions, tradeoffs, and the current task breakdown.
 > Update it after any significant conversation or when priorities shift.
 >
-> Last updated: 2025-06-02 (Fixed "zero results" after strict link rules: relaxed prompt language + added smart fallback to author + keyword X search links when exact post URLs aren't available. User now always gets usable links while still preferring direct post links.)
+> Last updated: 2025-06-02 (Date display consistency in Research tabs + Grok model selector in Settings + dark colorful synthwave UI + proper X-only search via live_search tool)
 
 ---
 
@@ -272,6 +272,30 @@ Add new questions here as they come up. Resolve and move to Design Decisions whe
 This section captures key discussions from conversations so future sessions can pick up context quickly.
 
 **Format:** Add new entries at the **top**.
+
+---
+
+### 2025-06-02 — Research UI polish + Grok model choice + dark theme + X search hardening
+
+**What was fixed / implemented:**
+- **Date display consistency**: Current Research tab now falls back to the research run's `run_at` timestamp (just like Historical) instead of hard "Unknown date" when a source has no `published_at`. This fixed the visual asymmetry the user reported.
+- **Grok model selector**: Added dropdown in Settings to choose between `grok-4.3` (default, most capable), `grok-3`, and `grok-3-mini`. Choice is persisted in the DB and used for both research runs and the "Test Connection" button.
+- **Dark colorful UI**: Switched to synthwave dark theme with vibrant purple (#a855f7) primary + cyan secondary accents across navbar, buttons, cards, borders, etc. Removed the "too white" feel.
+- **X search focus**: Updated the Grok tool call to use `live_search` with `sources: [{ "type": "x" }]` (the correct supported format) + very strong system/user prompts that explicitly instruct the model to search **X only**, ignore web results, and prioritize the high-signal accounts the user cares about.
+- Hardened anti-hallucination rules + confidence filtering in the research prompt/parser.
+- Improved date parsing on the backend so Grok's "2026-05-29" style dates are correctly turned into usable `published_at` values.
+
+**Commits:**
+- One comprehensive commit covering the date fix, model selector, dark theme work, and X search improvements.
+
+**Why these changes:**
+- User repeatedly hit "making stuff up", bad links, zero results, or missing dates depending on how strict the prompts were.
+- Wanted control over which Grok model to use.
+- Wanted the app to actually feel dark and colored.
+- Wanted research to focus on X, not general web noise.
+
+**Result:**
+Much more usable and pleasant Research experience with consistent dates, model choice, nice dark UI, and X-focused results.
 
 ---
 
