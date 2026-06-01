@@ -3,7 +3,7 @@
 > **Living document.** This file captures architecture decisions, design discussions, tradeoffs, and the current task breakdown.
 > Update it after any significant conversation or when priorities shift.
 >
-> Last updated: 2025-06-02 (Fixed UNIQUE constraint on research_sources.id by adding original_id + using surrogate PKs for saved sources)
+> Last updated: 2025-06-02 (Added UNIQUE index on (run_id, original_id) + switched to INSERT OR IGNORE to eliminate duplicate sources per research run)
 
 ---
 
@@ -295,6 +295,11 @@ This replaces the old "refresh" behavior with proper historical tracking as requ
   - Storing the original source identifier in the new `original_id` column.
   - Added `original_id: Option<String>` to the `ResearchSource` struct (and TS interface).
   - Updated all INSERTs and the struct derives.
+
+**Follow-up improvement (user request):**
+- Added migration `0004_research_sources_unique_per_run.sql` creating a UNIQUE index on `(run_id, original_id)`.
+- Changed the INSERT to `INSERT OR IGNORE` so duplicate sources within the **same** research run are silently skipped (no repeats inside one run).
+- This guarantees that each research run contains unique sources based on their original identifier.
 
 **Compilation fix (2025-06-02):**
 - Fixed 6 Rust compilation errors: `ResearchSource` was missing `#[derive(sqlx::FromRow)]`, which is required when using `sqlx::query_as` to load historical runs.

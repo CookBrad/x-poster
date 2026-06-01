@@ -456,7 +456,7 @@ pub async fn run_research(state: State<'_, AppState>) -> Result<ResearchRunWithS
 
         sqlx::query(
             r#"
-            INSERT INTO research_sources (
+            INSERT OR IGNORE INTO research_sources (
                 id, run_id, title, content, url, published_at, 
                 source_name, source_type, retweet_count, like_count, 
                 reply_count, quote_count, original_id
