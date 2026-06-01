@@ -375,12 +375,12 @@ function ResearchTab() {
     }
   };
 
-  const runResearch = async () => {
+  const handleRunResearch = async () => {
     setLoading(true);
     setError(null);
 
     try {
-      const newRun = await runResearch();
+      const newRun = await runResearch();   // imported from ./lib/db
       setCurrentRun(newRun);
       setActiveSubTab('current');
       await loadHistoricalList(); // refresh history list
@@ -424,7 +424,7 @@ function ResearchTab() {
         <div>
           <button 
             className="btn btn-primary mb-6" 
-            onClick={runResearch}
+            onClick={handleRunResearch}
             disabled={loading}
           >
             {loading ? 'Researching...' : 'Run Research Now'}

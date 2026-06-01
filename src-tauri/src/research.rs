@@ -4,7 +4,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct ResearchSource {
     pub id: String,
     pub title: String,
@@ -18,6 +18,11 @@ pub struct ResearchSource {
     pub like_count: Option<u32>,
     pub reply_count: Option<u32>,
     pub quote_count: Option<u32>,
+
+    /// Original identifier from the source (X post id, RSS entry id, etc.).
+    /// This can be duplicated across different research runs.
+    /// The `id` field is the unique row identifier in the database.
+    pub original_id: Option<String>,
 }
 
 /// Fetches recent items from a list of RSS feeds relevant to Tesla/TSLA/Elon.
@@ -111,6 +116,7 @@ async fn fetch_single_rss(client: &Client, url: &str) -> Result<Vec<ResearchSour
             like_count: None,
             reply_count: None,
             quote_count: None,
+            original_id: Some(entry.id.clone()),
         });
     }
 
@@ -246,6 +252,7 @@ If you cannot find any high-quality posts, return an empty array []."#;
             like_count: None,
             reply_count: None,
             quote_count: None,
+            original_id: Some(text.clone()), // or better identifier if available
         });
     }
 

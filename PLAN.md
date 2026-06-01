@@ -3,7 +3,7 @@
 > **Living document.** This file captures architecture decisions, design discussions, tradeoffs, and the current task breakdown.
 > Update it after any significant conversation or when priorities shift.
 >
-> Last updated: 2025-06-02 (Research now persists to DB with Current + Historical tabs inside Research)
+> Last updated: 2025-06-02 (Fixed UNIQUE constraint on research_sources.id by adding original_id + using surrogate PKs for saved sources)
 
 ---
 
@@ -286,6 +286,19 @@ This section captures key discussions from conversations so future sessions can 
 - Every research run is now automatically persisted to SQLite
 
 This replaces the old "refresh" behavior with proper historical tracking as requested.
+
+**Bug fix:**
+- The error `UNIQUE constraint failed: research_sources.id` occurred because we were reusing the original source ID (from X or RSS) as the primary key when saving multiple research runs.
+- Fixed by:
+  - Creating migration `0003_research_sources_original_id.sql` that adds an `original_id` column.
+  - Changing the INSERT logic to always generate a fresh UUID for the row `id`.
+  - Storing the original source identifier in the new `original_id` column.
+  - Added `original_id: Option<String>` to the `ResearchSource` struct (and TS interface).
+  - Updated all INSERTs and the struct derives.
+
+**Compilation fix (2025-06-02):**
+- Fixed 6 Rust compilation errors: `ResearchSource` was missing `#[derive(sqlx::FromRow)]`, which is required when using `sqlx::query_as` to load historical runs.
+- All Rust + TypeScript checks now pass cleanly.
 
 ---
 

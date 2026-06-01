@@ -448,18 +448,22 @@ pub async fn run_research(state: State<'_, AppState>) -> Result<ResearchRunWithS
     .await
     .map_err(|e| format!("Failed to create research run: {}", e))?;
 
-    // 3. Insert all sources linked to this run
+    // 3. Insert all sources linked to this run.
+    // We generate a fresh UUID for the row `id` to avoid collisions across runs.
+    // The original source identifier is stored in `original_id`.
     for source in &sources {
+        let row_id = Uuid::new_v4().to_string();
+
         sqlx::query(
             r#"
             INSERT INTO research_sources (
                 id, run_id, title, content, url, published_at, 
                 source_name, source_type, retweet_count, like_count, 
-                reply_count, quote_count
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                reply_count, quote_count, original_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#
         )
-        .bind(&source.id)
+        .bind(&row_id)
         .bind(&run_id)
         .bind(&source.title)
         .bind(&source.content)
@@ -471,6 +475,7 @@ pub async fn run_research(state: State<'_, AppState>) -> Result<ResearchRunWithS
         .bind(source.like_count)
         .bind(source.reply_count)
         .bind(source.quote_count)
+        .bind(&source.original_id)
         .execute(&state.db)
         .await
         .map_err(|e| format!("Failed to save research source: {}", e))?;

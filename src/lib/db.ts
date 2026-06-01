@@ -79,6 +79,13 @@ export interface ResearchSource {
   published_at: string | null;
   source_name: string;
   source_type: string;
+  // Optional engagement data (present on X-sourced items)
+  retweet_count?: number;
+  like_count?: number;
+  reply_count?: number;
+  quote_count?: number;
+  // The original identifier from the source (useful when the row id is a surrogate)
+  original_id?: string;
 }
 
 export async function fetchResearchSources(): Promise<ResearchSource[]> {
@@ -112,17 +119,17 @@ export interface ResearchRunWithSources {
 }
 
 export async function runResearch(): Promise<ResearchRunWithSources> {
-  return invoke('run_research');
+  return invoke<ResearchRunWithSources>('run_research');
 }
 
 export async function getLatestResearchRun(): Promise<ResearchRunWithSources | null> {
-  return invoke('get_latest_research_run');
+  return invoke<ResearchRunWithSources | null>('get_latest_research_run');
 }
 
 export async function getResearchRuns(): Promise<ResearchRun[]> {
-  return invoke('get_research_runs');
+  return invoke<ResearchRun[]>('get_research_runs');
 }
 
 export async function getResearchRun(runId: string): Promise<ResearchRunWithSources | null> {
-  return invoke('get_research_run', { runId });
+  return invoke<ResearchRunWithSources | null>('get_research_run', { run_id: runId });
 }
