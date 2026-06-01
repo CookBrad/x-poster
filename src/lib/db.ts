@@ -95,3 +95,34 @@ export function parseSources(draft: Draft): any[] {
     return []
   }
 }
+
+// ============================================
+// Research Runs (Current + Historical)
+// ============================================
+
+export interface ResearchRun {
+  id: string;
+  run_at: string;
+  source: string;
+}
+
+export interface ResearchRunWithSources {
+  run: ResearchRun;
+  sources: ResearchSource[];
+}
+
+export async function runResearch(): Promise<ResearchRunWithSources> {
+  return invoke('run_research');
+}
+
+export async function getLatestResearchRun(): Promise<ResearchRunWithSources | null> {
+  return invoke('get_latest_research_run');
+}
+
+export async function getResearchRuns(): Promise<ResearchRun[]> {
+  return invoke('get_research_runs');
+}
+
+export async function getResearchRun(runId: string): Promise<ResearchRunWithSources | null> {
+  return invoke('get_research_run', { runId });
+}

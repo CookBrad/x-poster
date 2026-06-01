@@ -8,8 +8,13 @@ import {
   deleteDraft, 
   markDraftPosted,
   parseSources,
-  fetchResearchSources,
-  type Draft
+  runResearch,
+  getLatestResearchRun,
+  getResearchRuns,
+  getResearchRun,
+  type Draft,
+  type ResearchRunWithSources,
+  type ResearchRun
 } from './lib/db'
 
 type Tab = 'queue' | 'research' | 'settings' | 'history'
@@ -326,82 +331,205 @@ function QueueTab() {
 }
 
 // ============================================
-// ResearchTab - Live research + generation
+// ResearchTab - Current + Historical research runs
 // ============================================
+type ResearchSubTab = 'current' | 'historical';
+
 function ResearchTab() {
-  const [sources, setSources] = useState<any[]>([]);
+  const [activeSubTab, setActiveSubTab] = useState<ResearchSubTab>('current');
+
+  const [currentRun, setCurrentRun] = useState<ResearchRunWithSources | null>(null);
+  const [historicalRuns, setHistoricalRuns] = useState<ResearchRun[]>([]);
+  const [selectedHistorical, setSelectedHistorical] = useState<ResearchRunWithSources | null>(null);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const loadLatest = async () => {
+    try {
+      const run = await getLatestResearchRun();
+      setCurrentRun(run);
+    } catch (e: any) {
+      console.error(e);
+    }
+  };
+
+  const loadHistoricalList = async () => {
+    try {
+      const runs = await getResearchRuns();
+      setHistoricalRuns(runs);
+    } catch (e: any) {
+      console.error(e);
+    }
+  };
+
+  const loadHistoricalRun = async (runId: string) => {
+    setLoading(true);
+    try {
+      const run = await getResearchRun(runId);
+      setSelectedHistorical(run);
+    } catch (e: any) {
+      setError('Failed to load historical research run.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const runResearch = async () => {
     setLoading(true);
     setError(null);
 
     try {
-      const results = await fetchResearchSources();
-      setSources(results);
+      const newRun = await runResearch();
+      setCurrentRun(newRun);
+      setActiveSubTab('current');
+      await loadHistoricalList(); // refresh history list
     } catch (e: any) {
       console.error(e);
-      setError('Failed to fetch research sources. Check your internet connection.');
+      setError('Research failed. Check your xAI API key and connection.');
     } finally {
       setLoading(false);
     }
   };
 
+  // Load latest on mount
+  useEffect(() => {
+    loadLatest();
+    loadHistoricalList();
+  }, []);
+
   return (
     <div>
-      <h2 className="text-2xl font-semibold mb-2">Manual Research</h2>
+      <h2 className="text-2xl font-semibold mb-2">Research</h2>
       <p className="mb-4 text-sm opacity-70">
         Uses Grok to discover high-signal Tesla/Elon posts on X + pulls from key RSS feeds.
       </p>
 
-      <button 
-        className="btn btn-primary mb-6" 
-        onClick={runResearch}
-        disabled={loading}
-      >
-        {loading ? 'Researching...' : 'Run Research Now'}
-      </button>
+      <div className="flex gap-2 mb-4">
+        <button 
+          className={`btn btn-sm ${activeSubTab === 'current' ? 'btn-primary' : 'btn-outline'}`}
+          onClick={() => setActiveSubTab('current')}
+        >
+          Current
+        </button>
+        <button 
+          className={`btn btn-sm ${activeSubTab === 'historical' ? 'btn-primary' : 'btn-outline'}`}
+          onClick={() => setActiveSubTab('historical')}
+        >
+          Historical
+        </button>
+      </div>
 
-      {error && <div className="alert alert-error mb-4">{error}</div>}
-
-      {sources.length > 0 && (
+      {activeSubTab === 'current' && (
         <div>
-          <h3 className="text-lg font-semibold mb-3">Recent Sources Found ({sources.length})</h3>
-          <div className="space-y-3">
-            {sources.slice(0, 10).map((source, index) => (
-              <div key={index} className="card bg-base-100 shadow-sm">
-                <div className="card-body py-3">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <a 
-                        href={source.url} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="font-medium hover:underline"
-                      >
-                        {source.title}
-                      </a>
-                      <div className="text-xs opacity-60 mt-0.5">
-                        {source.source_name} • {source.published_at ? new Date(source.published_at).toLocaleDateString() : 'Unknown date'}
+          <button 
+            className="btn btn-primary mb-6" 
+            onClick={runResearch}
+            disabled={loading}
+          >
+            {loading ? 'Researching...' : 'Run Research Now'}
+          </button>
+
+          {error && <div className="alert alert-error mb-4">{error}</div>}
+
+          {currentRun ? (
+            <div>
+              <h3 className="text-lg font-semibold mb-1">
+                Latest Research Run — {new Date(currentRun.run.run_at).toLocaleString()}
+              </h3>
+              <p className="text-xs opacity-60 mb-4">{currentRun.sources.length} sources</p>
+
+              <div className="space-y-3">
+                {currentRun.sources.map((source, index) => (
+                  <div key={index} className="card bg-base-100 shadow-sm">
+                    <div className="card-body py-3">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <a 
+                            href={source.url} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="font-medium hover:underline"
+                          >
+                            {source.title}
+                          </a>
+                          <div className="text-xs opacity-60 mt-0.5">
+                            {source.source_name} • {source.published_at ? new Date(source.published_at).toLocaleDateString() : 'Unknown date'}
+                          </div>
+                        </div>
+                        <div className="badge badge-outline badge-sm">{source.source_type}</div>
                       </div>
+                      <p className="text-sm line-clamp-2 opacity-80 mt-1">{source.content}</p>
+                      {source.source_type === 'x_grok' && (
+                        <div className="text-[10px] text-emerald-600 font-medium mt-1">★ Grok-curated high-signal post</div>
+                      )}
                     </div>
-                    <div className="badge badge-outline badge-sm">{source.source_type}</div>
                   </div>
-                  <p className="text-sm line-clamp-2 opacity-80 mt-1">{source.content}</p>
-                  {source.source_type === 'x_grok' && (
-                    <div className="text-[10px] text-emerald-600 font-medium mt-1">★ Grok-curated high-signal post</div>
-                  )}
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="alert alert-info">
+              No research run yet. Click "Run Research Now" to start.
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeSubTab === 'historical' && (
+        <div>
+          {historicalRuns.length === 0 ? (
+            <div className="alert alert-info">No historical research runs yet.</div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* List of runs */}
+              <div>
+                <h3 className="font-semibold mb-2">Past Runs</h3>
+                <div className="space-y-2">
+                  {historicalRuns.map((run) => (
+                    <button
+                      key={run.id}
+                      onClick={() => loadHistoricalRun(run.id)}
+                      className={`w-full text-left p-3 rounded border hover:bg-base-200 ${selectedHistorical?.run.id === run.id ? 'border-primary bg-base-200' : ''}`}
+                    >
+                      <div className="font-medium">{new Date(run.run_at).toLocaleString()}</div>
+                      <div className="text-xs opacity-60">{run.source}</div>
+                    </button>
+                  ))}
                 </div>
               </div>
-            ))}
-          </div>
 
-          <div className="mt-6 alert alert-success">
-            <span>
-              Sources loaded. Ready to send to Grok for draft generation (coming next).
-            </span>
-          </div>
+              {/* Selected historical run */}
+              <div>
+                {selectedHistorical ? (
+                  <div>
+                    <h3 className="font-semibold mb-2">
+                      Run from {new Date(selectedHistorical.run.run_at).toLocaleString()}
+                    </h3>
+                    <div className="space-y-3">
+                      {selectedHistorical.sources.map((source, index) => (
+                        <div key={index} className="card bg-base-100 shadow-sm">
+                          <div className="card-body py-3">
+                            <a 
+                              href={source.url} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="font-medium hover:underline text-sm"
+                            >
+                              {source.title}
+                            </a>
+                            <p className="text-xs opacity-70 mt-1 line-clamp-2">{source.content}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-sm opacity-70">Select a past run on the left to view its sources.</div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

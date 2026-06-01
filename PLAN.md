@@ -3,7 +3,7 @@
 > **Living document.** This file captures architecture decisions, design discussions, tradeoffs, and the current task breakdown.
 > Update it after any significant conversation or when priorities shift.
 >
-> Last updated: 2025-06-02 (Completely removed direct X Developer API usage; Grok is now the only source for X posts)
+> Last updated: 2025-06-02 (Research now persists to DB with Current + Historical tabs inside Research)
 
 ---
 
@@ -272,6 +272,20 @@ Add new questions here as they come up. Resolve and move to Design Decisions whe
 This section captures key discussions from conversations so future sessions can pick up context quickly.
 
 **Format:** Add new entries at the **top**.
+
+---
+
+### 2025-06-02 — Research persistence + Current / Historical tabs
+
+**What was implemented:**
+- New database tables: `research_runs` + `research_sources`
+- New commands: `run_research`, `get_latest_research_run`, `get_research_runs`, `get_research_run`
+- ResearchTab refactored to have two sub-tabs:
+  - **Current**: Shows the most recent research run + "Run Research Now" button (which saves the result)
+  - **Historical**: Lists all past runs with ability to view any previous research session
+- Every research run is now automatically persisted to SQLite
+
+This replaces the old "refresh" behavior with proper historical tracking as requested.
 
 ---
 

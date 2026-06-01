@@ -410,6 +410,145 @@ pub async fn fetch_research_sources(state: State<'_, AppState>) -> Result<Vec<re
 
 
 // ============================================
+// Research Run Persistence (Current + Historical tabs)
+// ============================================
+
+#[derive(Debug, Serialize, Deserialize, Clone, sqlx::FromRow)]
+pub struct ResearchRun {
+    pub id: String,
+    pub run_at: String,
+    pub source: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ResearchRunWithSources {
+    pub run: ResearchRun,
+    pub sources: Vec<research::ResearchSource>,
+}
+
+#[tauri::command]
+pub async fn run_research(state: State<'_, AppState>) -> Result<ResearchRunWithSources, String> {
+    // 1. Fetch fresh sources using existing logic
+    let sources = fetch_research_sources(state.clone()).await?;
+
+    if sources.is_empty() {
+        return Err("No sources found during research run.".to_string());
+    }
+
+    // 2. Create a new research run
+    let run_id = Uuid::new_v4().to_string();
+    let run_at = chrono::Utc::now().to_rfc3339();
+
+    sqlx::query(
+        "INSERT INTO research_runs (id, run_at, source) VALUES (?, ?, 'manual')"
+    )
+    .bind(&run_id)
+    .bind(&run_at)
+    .execute(&state.db)
+    .await
+    .map_err(|e| format!("Failed to create research run: {}", e))?;
+
+    // 3. Insert all sources linked to this run
+    for source in &sources {
+        sqlx::query(
+            r#"
+            INSERT INTO research_sources (
+                id, run_id, title, content, url, published_at, 
+                source_name, source_type, retweet_count, like_count, 
+                reply_count, quote_count
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            "#
+        )
+        .bind(&source.id)
+        .bind(&run_id)
+        .bind(&source.title)
+        .bind(&source.content)
+        .bind(&source.url)
+        .bind(source.published_at.as_ref().map(|dt| dt.to_rfc3339()))
+        .bind(&source.source_name)
+        .bind(&source.source_type)
+        .bind(source.retweet_count)
+        .bind(source.like_count)
+        .bind(source.reply_count)
+        .bind(source.quote_count)
+        .execute(&state.db)
+        .await
+        .map_err(|e| format!("Failed to save research source: {}", e))?;
+    }
+
+    let run = ResearchRun {
+        id: run_id,
+        run_at,
+        source: "manual".to_string(),
+    };
+
+    Ok(ResearchRunWithSources { run, sources })
+}
+
+#[tauri::command]
+pub async fn get_latest_research_run(state: State<'_, AppState>) -> Result<Option<ResearchRunWithSources>, String> {
+    let run: Option<ResearchRun> = sqlx::query_as(
+        "SELECT * FROM research_runs ORDER BY run_at DESC LIMIT 1"
+    )
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e| format!("Failed to fetch latest run: {}", e))?;
+
+    match run {
+        Some(run) => {
+            let sources: Vec<research::ResearchSource> = sqlx::query_as(
+                "SELECT * FROM research_sources WHERE run_id = ? ORDER BY published_at DESC"
+            )
+            .bind(&run.id)
+            .fetch_all(&state.db)
+            .await
+            .map_err(|e| format!("Failed to fetch sources for run: {}", e))?;
+
+            Ok(Some(ResearchRunWithSources { run, sources }))
+        }
+        None => Ok(None),
+    }
+}
+
+#[tauri::command]
+pub async fn get_research_runs(state: State<'_, AppState>) -> Result<Vec<ResearchRun>, String> {
+    let runs: Vec<ResearchRun> = sqlx::query_as(
+        "SELECT * FROM research_runs ORDER BY run_at DESC"
+    )
+    .fetch_all(&state.db)
+    .await
+    .map_err(|e| format!("Failed to fetch research runs: {}", e))?;
+
+    Ok(runs)
+}
+
+#[tauri::command]
+pub async fn get_research_run(state: State<'_, AppState>, run_id: String) -> Result<Option<ResearchRunWithSources>, String> {
+    let run: Option<ResearchRun> = sqlx::query_as(
+        "SELECT * FROM research_runs WHERE id = ?"
+    )
+    .bind(&run_id)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e| format!("Failed to fetch run: {}", e))?;
+
+    match run {
+        Some(run) => {
+            let sources: Vec<research::ResearchSource> = sqlx::query_as(
+                "SELECT * FROM research_sources WHERE run_id = ? ORDER BY published_at DESC"
+            )
+            .bind(&run.id)
+            .fetch_all(&state.db)
+            .await
+            .map_err(|e| format!("Failed to fetch sources: {}", e))?;
+
+            Ok(Some(ResearchRunWithSources { run, sources }))
+        }
+        None => Ok(None),
+    }
+}
+
+// ============================================
 // Settings / API Keys (persisted in DB for now)
 // ============================================
 
