@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 
 interface ApiKeySettingsProps {
@@ -14,6 +14,18 @@ export default function ApiKeySettings({ initialSavedKey = '', onKeySaved, onKey
   const [keySaved, setKeySaved] = useState(false)
   const [testResult, setTestResult] = useState('')
   const [error, setError] = useState('')
+
+  const [grokModel, setGrokModel] = useState('grok-4.3')
+
+  // Load saved Grok model preference
+  useEffect(() => {
+    (async () => {
+      try {
+        const saved = await invoke<string | null>('get_setting', { key: 'grok_model' })
+        if (saved) setGrokModel(saved)
+      } catch {}
+    })()
+  }, [])
 
   const effectiveXaiKey = xaiKeyInput.trim() || savedXaiKey
 
@@ -52,6 +64,13 @@ export default function ApiKeySettings({ initialSavedKey = '', onKeySaved, onKey
     setTestResult('Testing xAI connection...')
     setError('')
 
+    // Load the saved model preference (defaults to grok-4.3)
+    let modelToUse = grokModel
+    try {
+      const savedModel = await invoke<string | null>('get_setting', { key: 'grok_model' })
+      if (savedModel) modelToUse = savedModel
+    } catch {}
+
     try {
       const res = await fetch('https://api.x.ai/v1/chat/completions', {
         method: 'POST',
@@ -60,7 +79,7 @@ export default function ApiKeySettings({ initialSavedKey = '', onKeySaved, onKey
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'grok-3',
+          model: modelToUse,
           messages: [
             { role: 'system', content: 'You are a helpful assistant.' },
             { role: 'user', content: 'Say hello from x-poster in one short sentence.' }
@@ -76,7 +95,7 @@ export default function ApiKeySettings({ initialSavedKey = '', onKeySaved, onKey
 
       const data = await res.json()
       const reply = data.choices?.[0]?.message?.content || 'No content'
-      setTestResult(`✅ Success! xAI replied: "${reply.trim()}"`)
+      setTestResult(`✅ Success! (using ${modelToUse}) xAI replied: "${reply.trim()}"`)
     } catch (err: any) {
       setTestResult(`❌ Error: ${err.message || err}`)
     }
@@ -131,6 +150,35 @@ export default function ApiKeySettings({ initialSavedKey = '', onKeySaved, onKey
             {savedXaiKey
               ? 'A key is currently saved. Enter a new one above to replace it.'
               : 'No key saved yet.'}
+          </span>
+        </div>
+      </label>
+
+      {/* Grok Model Selector */}
+      <label className="form-control w-full max-w-md mb-4">
+        <div className="label">
+          <span className="label-text">Grok Model for Research</span>
+        </div>
+        <select
+          className="select select-bordered w-full max-w-xs"
+          value={grokModel}
+          onChange={async (e) => {
+            const newModel = e.target.value
+            setGrokModel(newModel)
+            try {
+              await invoke('set_setting', { key: 'grok_model', value: newModel })
+            } catch (err) {
+              console.error('Failed to save model', err)
+            }
+          }}
+        >
+          <option value="grok-4.3">grok-4.3 (latest & most capable)</option>
+          <option value="grok-3">grok-3 (very capable)</option>
+          <option value="grok-3-mini">grok-3-mini (fastest & cheapest)</option>
+        </select>
+        <div className="label">
+          <span className="label-text-alt opacity-60">
+            grok-4.3 recommended for best research quality. Use grok-3-mini for speed/volume.
           </span>
         </div>
       </label>

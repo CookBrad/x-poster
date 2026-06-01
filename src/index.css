@@ -9,6 +9,36 @@
   --accent-bg: rgba(170, 59, 255, 0.1);
 }
 
+/* Extra color pop for synthwave (and other dark themes) */
+[data-theme="synthwave"] {
+  --primary: #a855f7;          /* Vibrant purple */
+  --secondary: #00f0ff;        /* Cyan */
+  --accent: #a855f7;
+  --neutral: #1a1a2e;
+}
+
+[data-theme="synthwave"] .btn-primary {
+  background-color: #a855f7;
+  border-color: #a855f7;
+  color: white;
+}
+
+[data-theme="synthwave"] .btn-primary:hover {
+  background-color: #c084fc;
+  border-color: #c084fc;
+}
+
+[data-theme="synthwave"] .btn-secondary {
+  background-color: #00d4ff;
+  border-color: #00d4ff;
+  color: #0a0a0f;
+}
+
+[data-theme="synthwave"] .btn-accent {
+  background-color: #7b2cbf;
+  border-color: #7b2cbf;
+}
+
 body {
   margin: 0;
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -27,10 +57,143 @@ body {
 
 .draft-card:hover {
   transform: translateY(-1px);
-  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.4), 0 4px 6px -4px rgb(0 0 0 / 0.3);
 }
 
 /* Char count warning colors */
 .char-ok { color: #16a34a; }
 .char-warn { color: #ca8a04; }
 .char-danger { color: #dc2626; }
+
+/* ============================================================
+   AGGRESSIVE DARK MODE OVERRIDE
+   This forces a proper dark theme with color even if
+   daisyUI theme variables aren't fully applying.
+   ============================================================ */
+
+html, body, #root {
+  background-color: #0f0f1a !important;
+  color: #e0e0ff !important;
+}
+
+/* Main containers */
+.min-h-screen,
+.bg-base-200,
+.bg-base-100 {
+  background-color: #0f0f1a !important;
+}
+
+/* Navbar */
+.navbar {
+  background-color: #16162a !important;
+  border-color: #a855f733 !important;
+}
+
+/* Tabs area */
+.tabs,
+.tabs-bordered {
+  background-color: #16162a !important;
+  border-color: #a855f722 !important;
+}
+
+/* Tab links */
+.tab {
+  color: #a0a0cc !important;
+}
+.tab-active,
+.tab.tab-active {
+  color: #a855f7 !important;
+  border-color: #a855f7 !important;
+}
+
+/* Cards (the source items in Historical and Current) */
+.card,
+.card.bg-base-100,
+.bg-base-100.shadow-sm,
+.bg-base-100.shadow {
+  background-color: #1a1a2e !important;
+  border: 1px solid #a855f722 !important;
+  color: #e0e0ff !important;
+}
+
+/* Text inside cards */
+.card p,
+.card .text-sm,
+.card .opacity-80,
+.card .opacity-70,
+.card .opacity-60 {
+  color: #c8c8e0 !important;
+}
+
+/* Search input */
+input[type="text"],
+.input,
+.input-bordered {
+  background-color: #16162a !important;
+  border-color: #a855f744 !important;
+  color: #e0e0ff !important;
+}
+
+/* Pagination controls */
+.join .btn,
+.btn.btn-sm.join-item {
+  background-color: #1a1a2e !important;
+  border-color: #a855f733 !important;
+  color: #e0e0ff !important;
+}
+
+/* Select (per page) */
+select,
+.select {
+  background-color: #16162a !important;
+  border-color: #a855f744 !important;
+  color: #e0e0ff !important;
+}
+
+/* Grok-curated badges use nice cyan for subtle color */
+.text-emerald-600,
+.text-green-600 {
+  color: #22d3ee !important;
+}
+
+/* General links in research */
+a.font-medium {
+  color: #c084fc !important;
+}
+
+a.font-medium:hover {
+  color: #a855f7 !important;
+  text-decoration: underline;
+}
+
+/* Headers */
+h2, h3 {
+  color: #ffffff !important;
+}
+
+/* Primary buttons use nice purple */
+.btn.btn-primary,
+.btn.btn-sm.btn-primary {
+  background-color: #a855f7 !important;
+  border-color: #a855f7 !important;
+  color: white !important;
+}
+
+.btn.btn-secondary {
+  background-color: #00d4ff !important;
+  border-color: #00d4ff !important;
+  color: #0a0a0f !important;
+}
+
+.btn.btn-accent {
+  background-color: #7b2cbf !important;
+  border-color: #7b2cbf !important;
+  color: white !important;
+}
+
+/* Badge */
+.badge-primary {
+  background-color: #a855f7 !important;
+  color: white !important;
+  border-color: #a855f7 !important;
+}

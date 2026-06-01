@@ -387,7 +387,11 @@ pub async fn fetch_research_sources(state: State<'_, AppState>) -> Result<Vec<re
     // X content is now discovered primarily via Grok (see fetch_grok_discovered_x_sources)
     // Direct X API usage has been removed.
     if !xai_key.is_empty() {
-        match research::fetch_grok_discovered_x_sources(&xai_key).await {
+        let grok_model = get_setting_db(&state.db, "grok_model".to_string())
+            .await?
+            .unwrap_or_else(|| "grok-4.3".to_string());
+
+        match research::fetch_grok_discovered_x_sources(&xai_key, &grok_model).await {
             Ok(grok_sources) => sources.extend(grok_sources),
             Err(e) => log::warn!("Grok X discovery failed: {}", e),
         }
@@ -447,11 +451,14 @@ pub struct HistoricalResearchSource {
 #[tauri::command]
 pub async fn run_research(state: State<'_, AppState>, mode: Option<String>) -> Result<ResearchRunWithSources, String> {
     let mode = mode.unwrap_or_else(|| "both".to_string()).to_lowercase();
+    log::info!("run_research invoked with mode='{}'", mode);
 
     let mut sources: Vec<research::ResearchSource> = Vec::new();
 
     if mode == "rss" || mode == "both" {
+        log::info!("run_research: fetching RSS sources for mode {}", mode);
         let rss = research::fetch_rss_sources().await?;
+        log::info!("run_research: got {} RSS sources", rss.len());
         sources.extend(rss);
     }
 
@@ -460,18 +467,42 @@ pub async fn run_research(state: State<'_, AppState>, mode: Option<String>) -> R
             .await?
             .unwrap_or_default();
 
+        let grok_model = get_setting_db(&state.db, "grok_model".to_string())
+            .await?
+            .unwrap_or_else(|| "grok-4.3".to_string());
+
+        log::info!("run_research: xAI key present for X mode? {}", !xai_key.is_empty());
+        log::info!("run_research: using Grok model: {}", grok_model);
+
         if xai_key.is_empty() {
             return Err("xAI API key is required to run X (Grok) research.".to_string());
         }
 
-        match research::fetch_grok_discovered_x_sources(&xai_key).await {
-            Ok(grok_sources) => sources.extend(grok_sources),
-            Err(e) => return Err(format!("Grok X research failed: {}", e)),
+        log::info!("run_research: calling fetch_grok_discovered_x_sources");
+        match research::fetch_grok_discovered_x_sources(&xai_key, &grok_model).await {
+            Ok(grok_sources) => {
+                log::info!("run_research: Grok returned {} X sources", grok_sources.len());
+                if grok_sources.is_empty() {
+                    log::warn!("run_research: Grok X path returned zero items. Check the detailed 'FULL RAW GROK RESPONSE' log lines above for exactly what the model replied. This often happens because the chat completions call has no live X search capability.");
+                }
+                sources.extend(grok_sources);
+            }
+            Err(e) => {
+                log::error!("run_research: Grok X discovery error: {}", e);
+                return Err(format!("Grok X research failed: {}", e));
+            }
         }
     }
 
     if sources.is_empty() {
-        return Err("No sources were found for the selected research mode.".to_string());
+        let msg = match mode.as_str() {
+            "rss" => "No recent RSS articles found from the configured feeds (Teslarati, Tesla Motors Club) — all items older than 14 days or feeds were unreachable.".to_string(),
+            "x" => "Grok did not return any high-signal X posts matching the Musk-companies criteria this time. (See backend logs for the raw Grok response.) Try again later or run RSS only.".to_string(),
+            "both" => "No sources returned: RSS feeds yielded nothing recent and Grok X discovery also returned zero items.".to_string(),
+            _ => format!("No sources were found for research mode '{}'.", mode),
+        };
+        log::warn!("run_research: {}", msg);
+        return Err(msg);
     }
 
     // Create run

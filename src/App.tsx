@@ -21,6 +21,11 @@ type Tab = 'queue' | 'research' | 'settings' | 'history'
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>('queue')
 
+  // Aggressively ensure dark colorful theme (synthwave) is applied
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', 'synthwave')
+  }, [])
+
   // Persisted xAI key (loaded from backend or .env fallback)
   const [savedXaiKey, setSavedXaiKey] = useState<string>('')
 
@@ -51,13 +56,13 @@ function App() {
   return (
     <div className="min-h-screen bg-base-200">
       {/* Top bar */}
-      <div className="navbar bg-base-100 border-b px-4">
+      <div className="navbar bg-base-100 border-b border-primary/30 px-4">
         <div className="flex-1">
-          <span className="text-2xl font-semibold tracking-tight">x-poster</span>
-          <span className="ml-2 text-xs opacity-60 align-super">Tesla • TSLA • Elon (non-political)</span>
+          <span className="text-2xl font-semibold tracking-tight text-primary">x-poster</span>
+          <span className="ml-2 text-xs opacity-70 align-super text-secondary">Tesla • TSLA • Elon (non-political)</span>
         </div>
         <div className="flex-none">
-          <div className="badge badge-outline badge-sm mr-3">local • dev</div>
+          <div className="badge badge-primary badge-sm badge-outline mr-3">local • dev</div>
           <button className="btn btn-sm btn-primary" onClick={() => window.location.reload()}>
             Refresh
           </button>
@@ -65,7 +70,7 @@ function App() {
       </div>
 
       {/* Tabs (daisyUI) */}
-      <div className="tabs tabs-bordered tabs-lg bg-base-100 px-4 pt-2">
+      <div className="tabs tabs-bordered tabs-lg bg-base-100 border-b border-primary/20 px-4 pt-2">
         <a
           className={`tab ${activeTab === 'queue' ? 'tab-active' : ''}`}
           onClick={() => setActiveTab('queue')}
@@ -409,37 +414,45 @@ function ResearchTab() {
 
       {activeSubTab === 'current' && (
         <div>
-          <div className="flex flex-wrap gap-2 mb-6">
+          <div className="flex flex-wrap gap-3 mb-6">
             <button 
-              className="btn btn-primary" 
+              className="btn btn-sm btn-primary" 
               onClick={() => handleRunResearch('rss')}
               disabled={loading}
             >
-              {loading ? 'Running...' : 'Run RSS Only'}
+              Run RSS Only
             </button>
 
             <button 
-              className="btn btn-secondary" 
+              className="btn btn-sm btn-secondary" 
               onClick={() => handleRunResearch('x')}
               disabled={loading || !hasXaiKey}
-              title={!hasXaiKey ? "xAI API key required for X research" : ""}
+              title={!hasXaiKey ? "xAI key required for Grok X research" : ""}
             >
-              {loading ? 'Running...' : 'Run X Only (Grok)'}
+              Run X Only (Grok)
             </button>
 
             <button 
-              className="btn btn-accent" 
+              className="btn btn-sm btn-accent" 
               onClick={() => handleRunResearch('both')}
               disabled={loading || !hasXaiKey}
-              title={!hasXaiKey ? "xAI API key required for X research" : ""}
+              title={!hasXaiKey ? "xAI key required for Grok X research" : ""}
             >
-              {loading ? 'Running...' : 'Run Both (RSS + X)'}
+              Run Both
             </button>
           </div>
 
+          {loading && (
+            <div className="flex flex-col items-center justify-center py-6 mb-4 bg-base-200 rounded-box">
+              <span className="loading loading-spinner loading-lg text-primary"></span>
+              <p className="mt-3 font-medium">Researching sources…</p>
+              <p className="text-xs opacity-60 mt-1">Querying RSS + Grok for high-signal Musk company updates</p>
+            </div>
+          )}
+
           {!hasXaiKey && (
             <div className="alert alert-warning alert-sm mb-4">
-              X research is disabled because no xAI API key is set in Settings.
+              X research via Grok is disabled — no xAI API key is saved in Settings.
             </div>
           )}
 
@@ -470,22 +483,36 @@ function ResearchTab() {
                 </div>
               )}
 
+              {currentRun.sources.some(s => s.source_type === 'x_grok') && (
+                <div className="alert alert-info alert-sm mb-4 text-xs">
+                  X items are Grok-suggested based on its knowledge. Always verify links and quotes — the model can make mistakes.
+                </div>
+              )}
+
               <div className="space-y-3">
                 {currentRun.sources.map((source, index) => (
                   <div key={index} className="card bg-base-100 shadow-sm">
                     <div className="card-body py-3">
                       <div className="flex justify-between items-start">
                         <div>
-                          <a 
-                            href={source.url} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="font-medium hover:underline"
-                          >
-                            {source.title}
-                          </a>
+                          {source.url ? (
+                            <a 
+                              href={source.url} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="font-medium hover:underline"
+                            >
+                              {source.title}
+                            </a>
+                          ) : (
+                            <span className="font-medium">{source.title}</span>
+                          )}
                           <div className="text-xs opacity-60 mt-0.5">
-                            {source.source_name} • {source.published_at ? new Date(source.published_at).toLocaleDateString() : 'Unknown date'}
+                            {source.source_name} • {source.published_at 
+                              ? new Date(source.published_at).toLocaleDateString() 
+                              : currentRun 
+                                ? new Date(currentRun.run.run_at).toLocaleDateString() 
+                                : 'Unknown date'}
                           </div>
                         </div>
                         <div className="badge badge-outline badge-sm">{source.source_type}</div>
@@ -659,14 +686,18 @@ function HistoricalSourcesList() {
               <div className="card-body py-3">
                 <div className="flex justify-between items-start">
                   <div>
-                    <a 
-                      href={source.url} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="font-medium hover:underline text-sm"
-                    >
-                      {source.title}
-                    </a>
+                    {source.url ? (
+                      <a 
+                        href={source.url} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="font-medium hover:underline text-sm"
+                      >
+                        {source.title}
+                      </a>
+                    ) : (
+                      <span className="font-medium text-sm">{source.title}</span>
+                    )}
                     <div className="text-xs opacity-60 mt-0.5">
                       {source.source_name} • {source.published_at 
                         ? new Date(source.published_at).toLocaleDateString() 
