@@ -445,30 +445,55 @@ pub struct HistoricalResearchSource {
 }
 
 #[tauri::command]
-pub async fn run_research(state: State<'_, AppState>) -> Result<ResearchRunWithSources, String> {
-    // 1. Fetch fresh sources using existing logic
-    let sources = fetch_research_sources(state.clone()).await?;
+pub async fn run_research(state: State<'_, AppState>, mode: Option<String>) -> Result<ResearchRunWithSources, String> {
+    let mode = mode.unwrap_or_else(|| "both".to_string()).to_lowercase();
 
-    if sources.is_empty() {
-        return Err("No sources found during research run.".to_string());
+    let mut sources: Vec<research::ResearchSource> = Vec::new();
+
+    if mode == "rss" || mode == "both" {
+        let rss = research::fetch_rss_sources().await?;
+        sources.extend(rss);
     }
 
-    // 2. Create a new research run
+    if mode == "x" || mode == "both" {
+        let xai_key = get_setting_db(&state.db, "xai_api_key".to_string())
+            .await?
+            .unwrap_or_default();
+
+        if xai_key.is_empty() {
+            return Err("xAI API key is required to run X (Grok) research.".to_string());
+        }
+
+        match research::fetch_grok_discovered_x_sources(&xai_key).await {
+            Ok(grok_sources) => sources.extend(grok_sources),
+            Err(e) => return Err(format!("Grok X research failed: {}", e)),
+        }
+    }
+
+    if sources.is_empty() {
+        return Err("No sources were found for the selected research mode.".to_string());
+    }
+
+    // Create run
     let run_id = Uuid::new_v4().to_string();
     let run_at = chrono::Utc::now().to_rfc3339();
+    let run_source = match mode.as_str() {
+        "rss" => "rss",
+        "x" => "x_grok",
+        _ => "both",
+    };
 
     sqlx::query(
-        "INSERT INTO research_runs (id, run_at, source) VALUES (?, ?, 'manual')"
+        "INSERT INTO research_runs (id, run_at, source) VALUES (?, ?, ?)"
     )
     .bind(&run_id)
     .bind(&run_at)
+    .bind(run_source)
     .execute(&state.db)
     .await
     .map_err(|e| format!("Failed to create research run: {}", e))?;
 
-    // 3. Insert all sources linked to this run.
-    // We generate a fresh UUID for the row `id` to avoid collisions across runs.
-    // The original source identifier is stored in `original_id`.
+    // Insert sources (with fresh row IDs + original_id)
     for source in &sources {
         let row_id = Uuid::new_v4().to_string();
 
@@ -502,7 +527,7 @@ pub async fn run_research(state: State<'_, AppState>) -> Result<ResearchRunWithS
     let run = ResearchRun {
         id: run_id,
         run_at,
-        source: "manual".to_string(),
+        source: run_source.to_string(),
     };
 
     Ok(ResearchRunWithSources { run, sources })

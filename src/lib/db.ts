@@ -118,8 +118,8 @@ export interface ResearchRunWithSources {
   sources: ResearchSource[];
 }
 
-export async function runResearch(): Promise<ResearchRunWithSources> {
-  return invoke<ResearchRunWithSources>('run_research');
+export async function runResearch(mode: 'rss' | 'x' | 'both' = 'both'): Promise<ResearchRunWithSources> {
+  return invoke<ResearchRunWithSources>('run_research', { mode });
 }
 
 export async function getLatestResearchRun(): Promise<ResearchRunWithSources | null> {

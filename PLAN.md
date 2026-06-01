@@ -3,7 +3,7 @@
 > **Living document.** This file captures architecture decisions, design discussions, tradeoffs, and the current task breakdown.
 > Update it after any significant conversation or when priorities shift.
 >
-> Last updated: 2025-06-02 (Added clear UI messaging: X posts only come via Grok and require an xAI API key)
+> Last updated: 2025-06-02 (Research tab now offers separate RSS / X(Grok) / Both buttons with key presence check; removed warning banners)
 
 ---
 
@@ -327,7 +327,19 @@ This replaces the old "refresh" behavior with proper historical tracking as requ
 - Added visible breakdown in the Current research view: RSS count vs X-via-Grok count.
 - Added a helpful warning alert when a research run returns 0 X sources via Grok, reminding the user that a valid xAI API key must be set in Settings.
 
+**User request — granular research buttons + key check:**
+- Replaced the single "Run Research Now" button with three explicit buttons:
+  - **Run RSS Only**
+  - **Run X Only (Grok)**
+  - **Run Both (RSS + X)**
+- The Research tab now checks on load whether an `xai_api_key` exists in the database.
+- X-related buttons are disabled (with tooltip) and a friendly notice is shown when the key is missing.
+- All previous warning banners were removed.
+- Backend `run_research` command now accepts an optional `mode` parameter.
+
 ---
+
+
 
 ### 2025-06-02 — Completely removed direct X Developer API
 

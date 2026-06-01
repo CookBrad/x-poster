@@ -339,6 +339,7 @@ function ResearchTab() {
 
   const [currentRun, setCurrentRun] = useState<ResearchRunWithSources | null>(null);
   const [historicalSources, setHistoricalSources] = useState<HistoricalResearchSource[]>([]);
+  const [hasXaiKey, setHasXaiKey] = useState<boolean>(false);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -352,36 +353,35 @@ function ResearchTab() {
     }
   };
 
-  const loadAllHistorical = async () => {
-    try {
-      const allSources = await getAllHistoricalSources();
-      setHistoricalSources(allSources);
-    } catch (e: any) {
-      console.error(e);
-    }
-  };
-
-  const handleRunResearch = async () => {
+  const handleRunResearch = async (mode: 'rss' | 'x' | 'both' = 'both') => {
     setLoading(true);
     setError(null);
 
     try {
-      const newRun = await runResearch();   // imported from ./lib/db
+      const newRun = await runResearch(mode);   // imported from ./lib/db
       setCurrentRun(newRun);
       setActiveSubTab('current');
-      await loadAllHistorical(); // refresh history list
     } catch (e: any) {
       console.error(e);
-      setError('Research failed. Check your xAI API key and connection.');
+      setError(e?.message || 'Research failed. Check your xAI API key and connection.');
     } finally {
       setLoading(false);
     }
   };
 
-  // Load latest on mount
+  // Load latest on mount + check if xAI key exists
   useEffect(() => {
     loadLatest();
-    loadAllHistorical();
+
+    // Check if xAI key is present (for enabling X research buttons)
+    (async () => {
+      try {
+        const key = await invoke<string | null>('get_setting', { key: 'xai_api_key' });
+        setHasXaiKey(!!key);
+      } catch {
+        setHasXaiKey(false);
+      }
+    })();
   }, []);
 
   return (
@@ -389,8 +389,7 @@ function ResearchTab() {
       <h2 className="text-2xl font-semibold mb-2">Research — Musk Companies Only</h2>
       <p className="mb-4 text-sm opacity-70">
         Focused strictly on <strong>Elon Musk's companies</strong> (Tesla, SpaceX, xAI, Neuralink, Boring Company).<br />
-        General EV news is excluded.<br />
-        <span className="text-warning text-xs">X posts are discovered via Grok — your xAI API key must be set in Settings.</span>
+        General EV news is excluded.
       </p>
 
       <div className="flex gap-2 mb-4">
@@ -410,13 +409,39 @@ function ResearchTab() {
 
       {activeSubTab === 'current' && (
         <div>
-          <button 
-            className="btn btn-primary mb-6" 
-            onClick={handleRunResearch}
-            disabled={loading}
-          >
-            {loading ? 'Researching...' : 'Run Research Now'}
-          </button>
+          <div className="flex flex-wrap gap-2 mb-6">
+            <button 
+              className="btn btn-primary" 
+              onClick={() => handleRunResearch('rss')}
+              disabled={loading}
+            >
+              {loading ? 'Running...' : 'Run RSS Only'}
+            </button>
+
+            <button 
+              className="btn btn-secondary" 
+              onClick={() => handleRunResearch('x')}
+              disabled={loading || !hasXaiKey}
+              title={!hasXaiKey ? "xAI API key required for X research" : ""}
+            >
+              {loading ? 'Running...' : 'Run X Only (Grok)'}
+            </button>
+
+            <button 
+              className="btn btn-accent" 
+              onClick={() => handleRunResearch('both')}
+              disabled={loading || !hasXaiKey}
+              title={!hasXaiKey ? "xAI API key required for X research" : ""}
+            >
+              {loading ? 'Running...' : 'Run Both (RSS + X)'}
+            </button>
+          </div>
+
+          {!hasXaiKey && (
+            <div className="alert alert-warning alert-sm mb-4">
+              X research is disabled because no xAI API key is set in Settings.
+            </div>
+          )}
 
           {error && <div className="alert alert-error mb-4">{error}</div>}
 
