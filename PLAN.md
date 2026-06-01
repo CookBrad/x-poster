@@ -3,7 +3,7 @@
 > **Living document.** This file captures architecture decisions, design discussions, tradeoffs, and the current task breakdown.
 > Update it after any significant conversation or when priorities shift.
 >
-> Last updated: 2025-06-02 (Historical tab now shows one flat aggregated list of all research sources, sorted most recent first)
+> Last updated: 2025-06-02 (Historical research list now supports real-time search + adjustable pagination, default 25 items per page)
 
 ---
 
@@ -309,6 +309,11 @@ This replaces the old "refresh" behavior with proper historical tracking as requ
 **Compilation fix (2025-06-02):**
 - Fixed 6 Rust compilation errors: `ResearchSource` was missing `#[derive(sqlx::FromRow)]`, which is required when using `sqlx::query_as` to load historical runs.
 - All Rust + TypeScript checks now pass cleanly.
+
+**Pagination & Search (latest request):**
+- Historical list now supports real-time search across title, content, and source_name.
+- Adjustable page size (10/25/50/100 options), default 25.
+- Standard pagination UI with "Showing X–Y of Z" (reflects search filtering).
 
 ---
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import ApiKeySettings from './components/ApiKeySettings'
 import { 
@@ -470,10 +470,14 @@ function ResearchTab() {
 }
 
 // ============================================
-// HistoricalSourcesList - Flat aggregated list of all research sources
+// HistoricalSourcesList - Flat aggregated list of all research sources (paginated + searchable)
 // ============================================
 function HistoricalSourcesList() {
-  const [sources, setSources] = useState<HistoricalResearchSource[]>([]);
+  const [allSources, setAllSources] = useState<HistoricalResearchSource[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [pageSize, setPageSize] = useState(25);
+  const [currentPage, setCurrentPage] = useState(1);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -482,7 +486,7 @@ function HistoricalSourcesList() {
     setError(null);
     try {
       const all = await getAllHistoricalSources();
-      setSources(all);
+      setAllSources(all);
     } catch (e: any) {
       console.error(e);
       setError('Failed to load historical research sources.');
@@ -495,6 +499,37 @@ function HistoricalSourcesList() {
     loadAll();
   }, []);
 
+  // Filter sources based on search term
+  const filteredSources = useMemo(() => {
+    if (!searchTerm.trim()) return allSources;
+
+    const term = searchTerm.toLowerCase().trim();
+    return allSources.filter(source =>
+      source.title.toLowerCase().includes(term) ||
+      source.content.toLowerCase().includes(term) ||
+      source.source_name.toLowerCase().includes(term)
+    );
+  }, [allSources, searchTerm]);
+
+  // Calculate pagination
+  const totalItems = filteredSources.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const startIndex = (currentPage - 1) * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, totalItems);
+  const paginatedSources = filteredSources.slice(startIndex, endIndex);
+
+  // Reset to page 1 when search or page size changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, pageSize]);
+
+  // Ensure current page is valid if total pages change
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [totalPages, currentPage]);
+
   if (loading) {
     return <div className="flex justify-center py-12"><span className="loading loading-spinner loading-lg"></span></div>;
   }
@@ -503,43 +538,106 @@ function HistoricalSourcesList() {
     return <div className="alert alert-error">{error}</div>;
   }
 
-  if (sources.length === 0) {
+  if (allSources.length === 0) {
     return <div className="alert alert-info">No historical research sources yet. Run research a few times to build up history.</div>;
   }
 
   return (
     <div>
-      <h3 className="text-lg font-semibold mb-3">All Historical Sources ({sources.length}) — Sorted by Most Recent</h3>
-      <div className="space-y-3">
-        {sources.map((source, index) => (
-          <div key={`${source.id}-${index}`} className="card bg-base-100 shadow-sm">
-            <div className="card-body py-3">
-              <div className="flex justify-between items-start">
-                <div>
-                  <a 
-                    href={source.url} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="font-medium hover:underline text-sm"
-                  >
-                    {source.title}
-                  </a>
-                  <div className="text-xs opacity-60 mt-0.5">
-                    {source.source_name} • {source.published_at 
-                      ? new Date(source.published_at).toLocaleDateString() 
-                      : new Date(source.run_at).toLocaleDateString()}
-                  </div>
-                </div>
-                <div className="badge badge-outline badge-sm">{source.source_type}</div>
-              </div>
-              <p className="text-sm line-clamp-2 opacity-80 mt-1">{source.content}</p>
-              {source.source_type === 'x_grok' && (
-                <div className="text-[10px] text-emerald-600 font-medium mt-1">★ Grok-curated high-signal post</div>
-              )}
-            </div>
+      {/* Controls */}
+      <div className="flex flex-col md:flex-row gap-4 mb-4 items-start md:items-center justify-between">
+        <div className="flex items-center gap-4 flex-wrap">
+          {/* Search */}
+          <div className="form-control w-full max-w-xs">
+            <input
+              type="text"
+              placeholder="Search sources..."
+              className="input input-bordered input-sm w-full"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
           </div>
-        ))}
+
+          {/* Page Size */}
+          <div className="flex items-center gap-2">
+            <span className="text-sm opacity-70">Per page:</span>
+            <select 
+              className="select select-bordered select-sm"
+              value={pageSize}
+              onChange={(e) => setPageSize(Number(e.target.value))}
+            >
+              <option value={10}>10</option>
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Pagination Info + Controls */}
+        <div className="flex items-center gap-4">
+          <span className="text-sm opacity-70">
+            Showing {totalItems === 0 ? 0 : startIndex + 1}–{endIndex} of {totalItems}
+            {searchTerm && ` (filtered from ${allSources.length})`}
+          </span>
+
+          <div className="join">
+            <button 
+              className="btn btn-sm join-item"
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+            >
+              ← Prev
+            </button>
+            <button className="btn btn-sm join-item pointer-events-none">
+              Page {currentPage} of {totalPages}
+            </button>
+            <button 
+              className="btn btn-sm join-item"
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+            >
+              Next →
+            </button>
+          </div>
+        </div>
       </div>
+
+      {/* Results */}
+      {paginatedSources.length === 0 ? (
+        <div className="alert alert-info">No sources match your search.</div>
+      ) : (
+        <div className="space-y-3">
+          {paginatedSources.map((source, index) => (
+            <div key={`${source.id}-${index}`} className="card bg-base-100 shadow-sm">
+              <div className="card-body py-3">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <a 
+                      href={source.url} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="font-medium hover:underline text-sm"
+                    >
+                      {source.title}
+                    </a>
+                    <div className="text-xs opacity-60 mt-0.5">
+                      {source.source_name} • {source.published_at 
+                        ? new Date(source.published_at).toLocaleDateString() 
+                        : new Date(source.run_at).toLocaleDateString()}
+                    </div>
+                  </div>
+                  <div className="badge badge-outline badge-sm">{source.source_type}</div>
+                </div>
+                <p className="text-sm line-clamp-2 opacity-80 mt-1">{source.content}</p>
+                {source.source_type === 'x_grok' && (
+                  <div className="text-[10px] text-emerald-600 font-medium mt-1">★ Grok-curated high-signal post</div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
