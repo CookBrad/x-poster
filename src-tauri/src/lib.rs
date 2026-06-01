@@ -62,6 +62,7 @@ pub fn run() {
         commands::get_latest_research_run,
         commands::get_research_runs,
         commands::get_research_run,
+        commands::get_all_historical_sources,
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

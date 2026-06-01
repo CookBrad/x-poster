@@ -10,11 +10,10 @@ import {
   parseSources,
   runResearch,
   getLatestResearchRun,
-  getResearchRuns,
-  getResearchRun,
+  getAllHistoricalSources,
   type Draft,
   type ResearchRunWithSources,
-  type ResearchRun
+  type HistoricalResearchSource
 } from './lib/db'
 
 type Tab = 'queue' | 'research' | 'settings' | 'history'
@@ -339,8 +338,7 @@ function ResearchTab() {
   const [activeSubTab, setActiveSubTab] = useState<ResearchSubTab>('current');
 
   const [currentRun, setCurrentRun] = useState<ResearchRunWithSources | null>(null);
-  const [historicalRuns, setHistoricalRuns] = useState<ResearchRun[]>([]);
-  const [selectedHistorical, setSelectedHistorical] = useState<ResearchRunWithSources | null>(null);
+  const [historicalSources, setHistoricalSources] = useState<HistoricalResearchSource[]>([]);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -354,24 +352,12 @@ function ResearchTab() {
     }
   };
 
-  const loadHistoricalList = async () => {
+  const loadAllHistorical = async () => {
     try {
-      const runs = await getResearchRuns();
-      setHistoricalRuns(runs);
+      const allSources = await getAllHistoricalSources();
+      setHistoricalSources(allSources);
     } catch (e: any) {
       console.error(e);
-    }
-  };
-
-  const loadHistoricalRun = async (runId: string) => {
-    setLoading(true);
-    try {
-      const run = await getResearchRun(runId);
-      setSelectedHistorical(run);
-    } catch (e: any) {
-      setError('Failed to load historical research run.');
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -383,7 +369,7 @@ function ResearchTab() {
       const newRun = await runResearch();   // imported from ./lib/db
       setCurrentRun(newRun);
       setActiveSubTab('current');
-      await loadHistoricalList(); // refresh history list
+      await loadAllHistorical(); // refresh history list
     } catch (e: any) {
       console.error(e);
       setError('Research failed. Check your xAI API key and connection.');
@@ -395,7 +381,7 @@ function ResearchTab() {
   // Load latest on mount
   useEffect(() => {
     loadLatest();
-    loadHistoricalList();
+    loadAllHistorical();
   }, []);
 
   return (
@@ -477,61 +463,83 @@ function ResearchTab() {
       )}
 
       {activeSubTab === 'historical' && (
-        <div>
-          {historicalRuns.length === 0 ? (
-            <div className="alert alert-info">No historical research runs yet.</div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* List of runs */}
-              <div>
-                <h3 className="font-semibold mb-2">Past Runs</h3>
-                <div className="space-y-2">
-                  {historicalRuns.map((run) => (
-                    <button
-                      key={run.id}
-                      onClick={() => loadHistoricalRun(run.id)}
-                      className={`w-full text-left p-3 rounded border hover:bg-base-200 ${selectedHistorical?.run.id === run.id ? 'border-primary bg-base-200' : ''}`}
-                    >
-                      <div className="font-medium">{new Date(run.run_at).toLocaleString()}</div>
-                      <div className="text-xs opacity-60">{run.source}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Selected historical run */}
-              <div>
-                {selectedHistorical ? (
-                  <div>
-                    <h3 className="font-semibold mb-2">
-                      Run from {new Date(selectedHistorical.run.run_at).toLocaleString()}
-                    </h3>
-                    <div className="space-y-3">
-                      {selectedHistorical.sources.map((source, index) => (
-                        <div key={index} className="card bg-base-100 shadow-sm">
-                          <div className="card-body py-3">
-                            <a 
-                              href={source.url} 
-                              target="_blank" 
-                              rel="noopener noreferrer"
-                              className="font-medium hover:underline text-sm"
-                            >
-                              {source.title}
-                            </a>
-                            <p className="text-xs opacity-70 mt-1 line-clamp-2">{source.content}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-sm opacity-70">Select a past run on the left to view its sources.</div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
+        <HistoricalSourcesList />
       )}
+    </div>
+  );
+}
+
+// ============================================
+// HistoricalSourcesList - Flat aggregated list of all research sources
+// ============================================
+function HistoricalSourcesList() {
+  const [sources, setSources] = useState<HistoricalResearchSource[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadAll = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const all = await getAllHistoricalSources();
+      setSources(all);
+    } catch (e: any) {
+      console.error(e);
+      setError('Failed to load historical research sources.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadAll();
+  }, []);
+
+  if (loading) {
+    return <div className="flex justify-center py-12"><span className="loading loading-spinner loading-lg"></span></div>;
+  }
+
+  if (error) {
+    return <div className="alert alert-error">{error}</div>;
+  }
+
+  if (sources.length === 0) {
+    return <div className="alert alert-info">No historical research sources yet. Run research a few times to build up history.</div>;
+  }
+
+  return (
+    <div>
+      <h3 className="text-lg font-semibold mb-3">All Historical Sources ({sources.length}) — Sorted by Most Recent</h3>
+      <div className="space-y-3">
+        {sources.map((source, index) => (
+          <div key={`${source.id}-${index}`} className="card bg-base-100 shadow-sm">
+            <div className="card-body py-3">
+              <div className="flex justify-between items-start">
+                <div>
+                  <a 
+                    href={source.url} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="font-medium hover:underline text-sm"
+                  >
+                    {source.title}
+                  </a>
+                  <div className="text-xs opacity-60 mt-0.5">
+                    {source.source_name} • {source.published_at 
+                      ? new Date(source.published_at).toLocaleDateString() 
+                      : new Date(source.run_at).toLocaleDateString()}
+                  </div>
+                </div>
+                <div className="badge badge-outline badge-sm">{source.source_type}</div>
+              </div>
+              <p className="text-sm line-clamp-2 opacity-80 mt-1">{source.content}</p>
+              {source.source_type === 'x_grok' && (
+                <div className="text-[10px] text-emerald-600 font-medium mt-1">★ Grok-curated high-signal post</div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

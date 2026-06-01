@@ -426,6 +426,24 @@ pub struct ResearchRunWithSources {
     pub sources: Vec<research::ResearchSource>,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, sqlx::FromRow)]
+pub struct HistoricalResearchSource {
+    pub id: String,
+    pub run_id: String,
+    pub title: String,
+    pub content: String,
+    pub url: String,
+    pub published_at: Option<String>,
+    pub source_name: String,
+    pub source_type: String,
+    pub retweet_count: Option<i32>,
+    pub like_count: Option<i32>,
+    pub reply_count: Option<i32>,
+    pub quote_count: Option<i32>,
+    pub original_id: Option<String>,
+    pub run_at: String,
+}
+
 #[tauri::command]
 pub async fn run_research(state: State<'_, AppState>) -> Result<ResearchRunWithSources, String> {
     // 1. Fetch fresh sources using existing logic
@@ -551,6 +569,25 @@ pub async fn get_research_run(state: State<'_, AppState>, run_id: String) -> Res
         }
         None => Ok(None),
     }
+}
+
+#[tauri::command]
+pub async fn get_all_historical_sources(state: State<'_, AppState>) -> Result<Vec<HistoricalResearchSource>, String> {
+    let sources: Vec<HistoricalResearchSource> = sqlx::query_as(
+        r#"
+        SELECT 
+            rs.*,
+            rr.run_at
+        FROM research_sources rs
+        JOIN research_runs rr ON rs.run_id = rr.id
+        ORDER BY COALESCE(rs.published_at, rr.run_at) DESC
+        "#
+    )
+    .fetch_all(&state.db)
+    .await
+    .map_err(|e| format!("Failed to fetch historical sources: {}", e))?;
+
+    Ok(sources)
 }
 
 // ============================================

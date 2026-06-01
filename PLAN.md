@@ -3,7 +3,7 @@
 > **Living document.** This file captures architecture decisions, design discussions, tradeoffs, and the current task breakdown.
 > Update it after any significant conversation or when priorities shift.
 >
-> Last updated: 2025-06-02 (Added UNIQUE index on (run_id, original_id) + switched to INSERT OR IGNORE to eliminate duplicate sources per research run)
+> Last updated: 2025-06-02 (Historical tab now shows one flat aggregated list of all research sources, sorted most recent first)
 
 ---
 
@@ -286,6 +286,11 @@ This section captures key discussions from conversations so future sessions can 
 - Every research run is now automatically persisted to SQLite
 
 This replaces the old "refresh" behavior with proper historical tracking as requested.
+
+**UI change per user feedback:**
+- Removed the two-column "list of runs + click to view" pattern in the Historical tab.
+- Historical tab is now a single flat list of *all* research sources ever collected, sorted with the most recent at the top (using `COALESCE(published_at, run_at)`).
+- Much simpler and more useful for browsing history.
 
 **Bug fix:**
 - The error `UNIQUE constraint failed: research_sources.id` occurred because we were reusing the original source ID (from X or RSS) as the primary key when saving multiple research runs.

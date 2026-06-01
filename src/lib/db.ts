@@ -133,3 +133,11 @@ export async function getResearchRuns(): Promise<ResearchRun[]> {
 export async function getResearchRun(runId: string): Promise<ResearchRunWithSources | null> {
   return invoke<ResearchRunWithSources | null>('get_research_run', { run_id: runId });
 }
+
+export interface HistoricalResearchSource extends ResearchSource {
+  run_at: string;
+}
+
+export async function getAllHistoricalSources(): Promise<HistoricalResearchSource[]> {
+  return invoke<HistoricalResearchSource[]>('get_all_historical_sources');
+}
