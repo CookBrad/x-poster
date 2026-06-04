@@ -1,6 +1,7 @@
 mod commands;
 mod generation;
 mod research;
+mod x_oauth;
 mod x_post;
 
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
@@ -70,6 +71,8 @@ pub fn run() {
         commands::post_draft_to_x,
         commands::test_x_credentials,
         commands::has_x_credentials,
+        commands::connect_x_oauth,
+        commands::disconnect_x_oauth,
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

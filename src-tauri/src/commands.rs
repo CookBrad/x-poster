@@ -1,4 +1,4 @@
-use crate::{generation, research, x_post, AppState};
+use crate::{generation, research, x_oauth, x_post, AppState};
 use serde::{Deserialize, Serialize};
 use sqlx::sqlite::SqlitePool;
 use tauri::State;
@@ -842,41 +842,128 @@ pub async fn generate_drafts_from_latest_research(
 // X posting (T-007)
 // ============================================
 
-pub async fn load_x_credentials_db(db: &SqlitePool) -> Result<x_post::XCredentials, String> {
-    let api_key = get_setting_db(db, "x_consumer_key".to_string())
+pub async fn load_x_oauth_app_config_db(db: &SqlitePool) -> Result<x_oauth::XOAuthAppConfig, String> {
+    let client_id = get_setting_db(db, x_oauth::KEY_CLIENT_ID.to_string())
         .await?
         .filter(|s| !s.is_empty())
-        .ok_or("X API key (consumer key) is not set in Settings.".to_string())?;
-    let api_secret = get_setting_db(db, "x_consumer_secret".to_string())
+        .ok_or("X OAuth Client ID is not set in Settings.".to_string())?;
+    let client_secret = get_setting_db(db, x_oauth::KEY_CLIENT_SECRET.to_string())
         .await?
         .filter(|s| !s.is_empty())
-        .ok_or("X API secret (consumer secret) is not set in Settings.".to_string())?;
-    let access_token = get_setting_db(db, "x_access_token".to_string())
-        .await?
-        .filter(|s| !s.is_empty())
-        .ok_or("X access token is not set in Settings.".to_string())?;
-    let access_token_secret = get_setting_db(db, "x_access_token_secret".to_string())
-        .await?
-        .filter(|s| !s.is_empty())
-        .ok_or("X access token secret is not set in Settings.".to_string())?;
+        .ok_or("X OAuth Client Secret is not set in Settings.".to_string())?;
 
-    Ok(x_post::XCredentials {
-        api_key,
-        api_secret,
-        access_token,
-        access_token_secret,
+    Ok(x_oauth::XOAuthAppConfig {
+        client_id,
+        client_secret,
     })
+}
+
+async fn save_x_oauth_tokens_db(db: &SqlitePool, tokens: &x_oauth::XOAuthTokens) -> Result<(), String> {
+    set_setting_db(db, x_oauth::KEY_ACCESS_TOKEN.to_string(), tokens.access_token.clone()).await?;
+    if let Some(ref rt) = tokens.refresh_token {
+        set_setting_db(db, x_oauth::KEY_REFRESH_TOKEN.to_string(), rt.clone()).await?;
+    }
+    if let Some(exp) = tokens.expires_at {
+        set_setting_db(db, x_oauth::KEY_EXPIRES_AT.to_string(), exp.to_string()).await?;
+    }
+    Ok(())
+}
+
+pub async fn ensure_x_access_token_db(db: &SqlitePool) -> Result<String, String> {
+    let access = get_setting_db(db, x_oauth::KEY_ACCESS_TOKEN.to_string())
+        .await?
+        .filter(|s| !s.is_empty())
+        .ok_or("X account not connected. Use Connect with X in Settings.".to_string())?;
+
+    let expires_at: Option<i64> = get_setting_db(db, x_oauth::KEY_EXPIRES_AT.to_string())
+        .await?
+        .and_then(|s| s.parse().ok());
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+
+    let needs_refresh = expires_at.map(|exp| now + 300 >= exp).unwrap_or(false);
+
+    if !needs_refresh {
+        return Ok(access);
+    }
+
+    let refresh = get_setting_db(db, x_oauth::KEY_REFRESH_TOKEN.to_string())
+        .await?
+        .filter(|s| !s.is_empty())
+        .ok_or("X access token expired and no refresh token is stored. Connect with X again.".to_string())?;
+
+    let config = load_x_oauth_app_config_db(db).await?;
+    let tokens = x_oauth::refresh_access_token(&config, &refresh).await?;
+    save_x_oauth_tokens_db(db, &tokens).await?;
+    Ok(tokens.access_token)
 }
 
 #[tauri::command]
 pub async fn has_x_credentials(state: State<'_, AppState>) -> Result<bool, String> {
-    Ok(load_x_credentials_db(&state.db).await.is_ok())
+    let token = get_setting_db(&state.db, x_oauth::KEY_ACCESS_TOKEN.to_string()).await?;
+    Ok(token.filter(|s| !s.is_empty()).is_some())
 }
 
 #[tauri::command]
 pub async fn test_x_credentials(state: State<'_, AppState>) -> Result<String, String> {
-    let creds = load_x_credentials_db(&state.db).await?;
-    x_post::verify_credentials(&creds).await
+    let token = ensure_x_access_token_db(&state.db).await?;
+    x_post::verify_credentials(&token).await
+}
+
+#[tauri::command]
+pub async fn connect_x_oauth(state: State<'_, AppState>) -> Result<String, String> {
+    let config = load_x_oauth_app_config_db(&state.db).await?;
+
+    let verifier = x_oauth::generate_code_verifier();
+    let challenge = x_oauth::code_challenge_s256(&verifier);
+    let oauth_state = x_oauth::generate_oauth_state();
+
+    set_setting_db(
+        &state.db,
+        x_oauth::KEY_PKCE_VERIFIER.to_string(),
+        verifier.clone(),
+    )
+    .await?;
+    set_setting_db(
+        &state.db,
+        x_oauth::KEY_OAUTH_STATE.to_string(),
+        oauth_state.clone(),
+    )
+    .await?;
+
+    let authorize_url = x_oauth::build_authorize_url(&config.client_id, &oauth_state, &challenge);
+    x_oauth::open_authorize_url(&authorize_url)?;
+
+    let code = x_oauth::wait_for_oauth_callback(
+        &oauth_state,
+        std::time::Duration::from_secs(180),
+    )
+    .await?;
+
+    let tokens = x_oauth::exchange_code_for_tokens(&config, &code, &verifier).await?;
+    save_x_oauth_tokens_db(&state.db, &tokens).await?;
+
+    delete_setting_db(&state.db, x_oauth::KEY_PKCE_VERIFIER.to_string()).await.ok();
+    delete_setting_db(&state.db, x_oauth::KEY_OAUTH_STATE.to_string()).await.ok();
+
+    x_post::verify_credentials(&tokens.access_token).await
+}
+
+#[tauri::command]
+pub async fn disconnect_x_oauth(state: State<'_, AppState>) -> Result<(), String> {
+    for key in [
+        x_oauth::KEY_ACCESS_TOKEN,
+        x_oauth::KEY_REFRESH_TOKEN,
+        x_oauth::KEY_EXPIRES_AT,
+        x_oauth::KEY_PKCE_VERIFIER,
+        x_oauth::KEY_OAUTH_STATE,
+    ] {
+        delete_setting_db(&state.db, key.to_string()).await?;
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -893,8 +980,8 @@ pub async fn post_draft_to_x(state: State<'_, AppState>, id: String) -> Result<D
         return Err("Draft text is empty.".to_string());
     }
 
-    let creds = load_x_credentials_db(&state.db).await?;
-    let tweet_id = x_post::post_tweet(&creds, &draft.text).await?;
+    let access_token = ensure_x_access_token_db(&state.db).await?;
+    let tweet_id = x_post::post_tweet(&access_token, &draft.text).await?;
 
     mark_draft_posted_db(&state.db, id, tweet_id.clone()).await?;
 

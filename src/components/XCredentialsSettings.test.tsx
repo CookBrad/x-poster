@@ -15,27 +15,31 @@ describe('XCredentialsSettings', () => {
     mockInvoke.mockImplementation(async (cmd: string) => {
       if (cmd === 'get_setting') return null
       if (cmd === 'set_setting') return undefined
+      if (cmd === 'has_x_credentials') return false
       if (cmd === 'test_x_credentials') return 'Connected as @testuser'
+      if (cmd === 'connect_x_oauth') return 'Connected as @testuser'
       return null
     })
   })
 
-  it('renders credential fields', () => {
+  it('renders OAuth client fields and redirect URI', () => {
     render(<XCredentialsSettings />)
     expect(screen.getByTestId('x-credentials-settings')).toBeInTheDocument()
-    expect(screen.getByTestId('x-cred-x_consumer_key')).toBeInTheDocument()
+    expect(screen.getByTestId('x-cred-x_oauth_client_id')).toBeInTheDocument()
+    expect(screen.getByTestId('x-oauth-redirect-uri')).toHaveTextContent(/127\.0\.0\.1:14555/)
   })
 
-  it('saves and tests credentials', async () => {
+  it('connects via OAuth flow', async () => {
     render(<XCredentialsSettings />)
 
-    fireEvent.change(screen.getByTestId('x-cred-x_consumer_key'), {
-      target: { value: 'key123' },
+    fireEvent.change(screen.getByTestId('x-cred-x_oauth_client_id'), {
+      target: { value: 'client123' },
     })
-    fireEvent.click(screen.getByTestId('x-cred-test'))
+    fireEvent.click(screen.getByTestId('x-cred-connect'))
 
     await waitFor(() => {
       expect(screen.getByTestId('x-cred-success')).toHaveTextContent(/Connected as @testuser/i)
     })
+    expect(mockInvoke).toHaveBeenCalledWith('connect_x_oauth', {})
   })
 })
