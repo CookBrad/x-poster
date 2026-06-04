@@ -646,6 +646,26 @@ pub async fn get_all_historical_sources(state: State<'_, AppState>) -> Result<Ve
     Ok(sources)
 }
 
+#[tauri::command]
+pub async fn reset_research_data(state: State<'_, AppState>) -> Result<(), String> {
+    reset_research_data_db(&state.db).await
+}
+
+pub async fn reset_research_data_db(db: &SqlitePool) -> Result<(), String> {
+    // Delete sources explicitly (cascade would handle via runs, but be explicit)
+    sqlx::query("DELETE FROM research_sources")
+        .execute(db)
+        .await
+        .map_err(|e| format!("Failed to delete research sources: {}", e))?;
+
+    sqlx::query("DELETE FROM research_runs")
+        .execute(db)
+        .await
+        .map_err(|e| format!("Failed to delete research runs: {}", e))?;
+
+    Ok(())
+}
+
 // ============================================
 // Settings / API Keys (persisted in DB for now)
 // ============================================

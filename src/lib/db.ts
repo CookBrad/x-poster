@@ -141,3 +141,11 @@ export interface HistoricalResearchSource extends ResearchSource {
 export async function getAllHistoricalSources(): Promise<HistoricalResearchSource[]> {
   return invoke<HistoricalResearchSource[]>('get_all_historical_sources');
 }
+
+/**
+ * Permanently deletes all research runs and sources from the local database.
+ * This cannot be undone. Use with caution (UI should show a warning prompt).
+ */
+export async function resetResearchData(): Promise<void> {
+  return invoke('reset_research_data');
+}

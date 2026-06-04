@@ -3,7 +3,7 @@
 > **Living document.** This file captures architecture decisions, design discussions, tradeoffs, and the current task breakdown.
 > Update it after any significant conversation or when priorities shift.
 >
-> Last updated: 2025-06-02 (Date display consistency in Research tabs + Grok model selector in Settings + dark colorful synthwave UI + proper X-only search via live_search tool)
+> Last updated: 2025-06-02 (Added "Reset All Research Data" with warning confirm dialog; previous date consistency, model selector, dark theme, X search)
 
 ---
 
@@ -296,6 +296,26 @@ This section captures key discussions from conversations so future sessions can 
 
 **Result:**
 Much more usable and pleasant Research experience with consistent dates, model choice, nice dark UI, and X-focused results.
+
+---
+
+### 2025-06-02 — Reset researched data with warning prompt
+
+**What was implemented:**
+- New Tauri command `reset_research_data` (and `_db` helper) that deletes all rows from `research_runs` and `research_sources` (cascade handles relations).
+- Exposed as `resetResearchData()` in `src/lib/db.ts`.
+- Added "Reset All Research Data" button in the Research tab (visible next to Current/Historical tabs).
+- On click: shows a detailed `confirm()` warning prompt explaining it's permanent and deletes everything.
+- On confirm: calls backend, clears `currentRun`, forces remount of HistoricalSourcesList via key increment so it reloads (now empty), switches to Current.
+- Added registration in lib.rs invoke list.
+
+**Rationale:**
+- User requested ability to completely wipe the researched data (for testing, privacy, or starting fresh) with safety prompt.
+- Uses the existing confirm pattern from Queue delete for consistency.
+- Since CASCADE is on the FK, data is cleanly removed.
+
+**UI location:**
+- Button is always available in the Research section for convenience (destructive action guarded by prompt).
 
 ---
 

@@ -11,6 +11,7 @@ import {
   runResearch,
   getLatestResearchRun,
   getAllHistoricalSources,
+  resetResearchData,
   type Draft,
   type ResearchRunWithSources,
   type HistoricalResearchSource
@@ -345,6 +346,7 @@ function ResearchTab() {
   const [currentRun, setCurrentRun] = useState<ResearchRunWithSources | null>(null);
   const [historicalSources, setHistoricalSources] = useState<HistoricalResearchSource[]>([]);
   const [hasXaiKey, setHasXaiKey] = useState<boolean>(false);
+  const [historicalResetKey, setHistoricalResetKey] = useState(0);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -369,6 +371,39 @@ function ResearchTab() {
     } catch (e: any) {
       console.error(e);
       setError(e?.message || 'Research failed. Check your xAI API key and connection.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResetResearchData = async () => {
+    const confirmed = confirm(
+      '⚠️ WARNING: This will permanently delete ALL researched data.\n\n' +
+      'This includes every research run and all associated sources (RSS + X/Grok items) stored in your local database.\n\n' +
+      'This action CANNOT be undone. Are you sure you want to continue?'
+    );
+    if (!confirmed) return;
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      await resetResearchData();
+      // Clear current view and reload historical (which will be empty)
+      setCurrentRun(null);
+      // If we are on historical, the child will need reload, but since we control state? 
+      // For simplicity, since HistoricalSourcesList manages its own state, we can trigger a reload by re-mounting or use a key.
+      // Better: add a resetKey or just reload the page data by calling load functions, but since child is separate,
+      // we'll use a simple approach: after reset, if on historical, we need to force the list to reload.
+      // For now, we'll set a state to force re-render of the list.
+      // Actually, to keep simple, after reset we can navigate to current (now empty) and user can switch.
+      // Improved: we'll expose reload via a prop, but to avoid big refactor, use window reload of data by changing a key.
+      // Let's use a simple state key for the historical component.
+      setHistoricalResetKey(prev => prev + 1);
+      setActiveSubTab('current'); // switch to current which is now cleared
+    } catch (e: any) {
+      console.error(e);
+      setError('Failed to reset research data: ' + (e?.message || e));
     } finally {
       setLoading(false);
     }
@@ -409,6 +444,15 @@ function ResearchTab() {
           onClick={() => setActiveSubTab('historical')}
         >
           Historical
+        </button>
+
+        <button 
+          className="btn btn-error btn-sm ml-auto"
+          onClick={handleResetResearchData}
+          disabled={loading}
+          title="Permanently delete all research runs and sources"
+        >
+          Reset All Research Data
         </button>
       </div>
 
@@ -536,7 +580,7 @@ function ResearchTab() {
       )}
 
       {activeSubTab === 'historical' && (
-        <HistoricalSourcesList />
+        <HistoricalSourcesList key={historicalResetKey} />
       )}
     </div>
   );

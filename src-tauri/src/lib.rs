@@ -63,6 +63,7 @@ pub fn run() {
         commands::get_research_runs,
         commands::get_research_run,
         commands::get_all_historical_sources,
+        commands::reset_research_data,
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
