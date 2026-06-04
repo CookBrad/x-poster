@@ -445,15 +445,6 @@ function ResearchTab() {
         >
           Historical
         </button>
-
-        <button 
-          className="btn btn-error btn-sm ml-auto"
-          onClick={handleResetResearchData}
-          disabled={loading}
-          title="Permanently delete all research runs and sources"
-        >
-          Reset All Research Data
-        </button>
       </div>
 
       {activeSubTab === 'current' && (
@@ -580,7 +571,19 @@ function ResearchTab() {
       )}
 
       {activeSubTab === 'historical' && (
-        <HistoricalSourcesList key={historicalResetKey} />
+        <>
+          <div className="flex justify-end mb-2">
+            <button 
+              className="btn btn-error btn-sm"
+              onClick={handleResetResearchData}
+              disabled={loading}
+              title="Permanently delete all research runs and sources"
+            >
+              Reset All Research Data
+            </button>
+          </div>
+          <HistoricalSourcesList key={historicalResetKey} />
+        </>
       )}
     </div>
   );
