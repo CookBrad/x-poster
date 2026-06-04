@@ -7,6 +7,9 @@ import {
   markDraftPosted,
   resetResearchData,
   getAllHistoricalSources,
+  generateDraftsFromLatestResearch,
+  postDraftToX,
+  hasXCredentials,
   type Draft,
 } from './db'
 import { invoke } from '@tauri-apps/api/core'
@@ -136,6 +139,33 @@ describe('db.ts - Tauri command wrappers', () => {
 
       expect(mockInvoke).toHaveBeenCalledWith('get_all_historical_sources')
       expect(result).toEqual([])
+    })
+  })
+
+  describe('generateDraftsFromLatestResearch & postDraftToX', () => {
+    it('calls generate_drafts_from_latest_research', async () => {
+      mockInvoke.mockResolvedValueOnce([mockDraft])
+
+      const result = await generateDraftsFromLatestResearch(3)
+
+      expect(mockInvoke).toHaveBeenCalledWith('generate_drafts_from_latest_research', { count: 3 })
+      expect(result).toHaveLength(1)
+    })
+
+    it('calls post_draft_to_x', async () => {
+      const posted = { ...mockDraft, status: 'posted' as const, x_post_id: '999' }
+      mockInvoke.mockResolvedValueOnce(posted)
+
+      const result = await postDraftToX('draft-123')
+
+      expect(mockInvoke).toHaveBeenCalledWith('post_draft_to_x', { id: 'draft-123' })
+      expect(result.status).toBe('posted')
+    })
+
+    it('calls has_x_credentials', async () => {
+      mockInvoke.mockResolvedValueOnce(true)
+      expect(await hasXCredentials()).toBe(true)
+      expect(mockInvoke).toHaveBeenCalledWith('has_x_credentials', {})
     })
   })
 })

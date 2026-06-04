@@ -1,4 +1,4 @@
-use crate::{research, AppState};
+use crate::{generation, research, x_post, AppState};
 use serde::{Deserialize, Serialize};
 use sqlx::sqlite::SqlitePool;
 use tauri::State;
@@ -784,6 +784,123 @@ pub async fn reset_research_data_db(db: &SqlitePool) -> Result<ResetResearchResu
         deleted_sources,
         deleted_runs,
     })
+}
+
+// ============================================
+// Draft generation (T-005 / T-006 / T-015)
+// ============================================
+
+#[tauri::command]
+pub async fn generate_drafts_from_latest_research(
+    state: State<'_, AppState>,
+    count: Option<u32>,
+) -> Result<Vec<Draft>, String> {
+    let count = count.unwrap_or(3).clamp(1, 5);
+
+    let run: Option<ResearchRun> = sqlx::query_as(
+        "SELECT * FROM research_runs ORDER BY run_at DESC LIMIT 1",
+    )
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e| format!("Failed to fetch latest run: {}", e))?;
+
+    let run = run.ok_or(
+        "No research run found. Run research first, then generate drafts.".to_string(),
+    )?;
+
+    let sources: Vec<research::ResearchSource> = sqlx::query_as(
+        "SELECT * FROM research_sources WHERE run_id = ? ORDER BY published_at DESC",
+    )
+    .bind(&run.id)
+    .fetch_all(&state.db)
+    .await
+    .map_err(|e| format!("Failed to fetch sources for run: {}", e))?;
+
+    if sources.is_empty() {
+        return Err("Latest research run has no sources to generate from.".to_string());
+    }
+
+    let xai_key = get_setting_db(&state.db, "xai_api_key".to_string())
+        .await?
+        .filter(|k| !k.is_empty())
+        .ok_or("xAI API key is required. Set it in Settings.".to_string())?;
+
+    let grok_model = get_setting_db(&state.db, "grok_model".to_string())
+        .await?
+        .unwrap_or_else(|| "grok-4.3".to_string());
+
+    log::info!(
+        "generate_drafts_from_latest_research: {} sources, count={}",
+        sources.len(),
+        count
+    );
+
+    generation::generate_drafts_from_sources_db(&state.db, &sources, &xai_key, &grok_model, count).await
+}
+
+// ============================================
+// X posting (T-007)
+// ============================================
+
+pub async fn load_x_credentials_db(db: &SqlitePool) -> Result<x_post::XCredentials, String> {
+    let api_key = get_setting_db(db, "x_consumer_key".to_string())
+        .await?
+        .filter(|s| !s.is_empty())
+        .ok_or("X API key (consumer key) is not set in Settings.".to_string())?;
+    let api_secret = get_setting_db(db, "x_consumer_secret".to_string())
+        .await?
+        .filter(|s| !s.is_empty())
+        .ok_or("X API secret (consumer secret) is not set in Settings.".to_string())?;
+    let access_token = get_setting_db(db, "x_access_token".to_string())
+        .await?
+        .filter(|s| !s.is_empty())
+        .ok_or("X access token is not set in Settings.".to_string())?;
+    let access_token_secret = get_setting_db(db, "x_access_token_secret".to_string())
+        .await?
+        .filter(|s| !s.is_empty())
+        .ok_or("X access token secret is not set in Settings.".to_string())?;
+
+    Ok(x_post::XCredentials {
+        api_key,
+        api_secret,
+        access_token,
+        access_token_secret,
+    })
+}
+
+#[tauri::command]
+pub async fn has_x_credentials(state: State<'_, AppState>) -> Result<bool, String> {
+    Ok(load_x_credentials_db(&state.db).await.is_ok())
+}
+
+#[tauri::command]
+pub async fn test_x_credentials(state: State<'_, AppState>) -> Result<String, String> {
+    let creds = load_x_credentials_db(&state.db).await?;
+    x_post::verify_credentials(&creds).await
+}
+
+#[tauri::command]
+pub async fn post_draft_to_x(state: State<'_, AppState>, id: String) -> Result<Draft, String> {
+    let draft = get_draft_db(&state.db, id.clone())
+        .await?
+        .ok_or("Draft not found".to_string())?;
+
+    if draft.status != "pending" {
+        return Err("Only pending drafts can be posted.".to_string());
+    }
+
+    if draft.text.trim().is_empty() {
+        return Err("Draft text is empty.".to_string());
+    }
+
+    let creds = load_x_credentials_db(&state.db).await?;
+    let tweet_id = x_post::post_tweet(&creds, &draft.text).await?;
+
+    mark_draft_posted_db(&state.db, id, tweet_id.clone()).await?;
+
+    get_draft_db(&state.db, draft.id)
+        .await?
+        .ok_or("Draft disappeared after posting".to_string())
 }
 
 // ============================================

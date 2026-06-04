@@ -154,3 +154,27 @@ export interface ResetResearchResult {
 export async function resetResearchData(): Promise<ResetResearchResult> {
   return invoke<ResetResearchResult>('reset_research_data', {});
 }
+
+// ============================================
+// Draft generation (T-005 / T-006)
+// ============================================
+
+export async function generateDraftsFromLatestResearch(count = 3): Promise<Draft[]> {
+  return invoke<Draft[]>('generate_drafts_from_latest_research', { count });
+}
+
+// ============================================
+// X posting (T-007)
+// ============================================
+
+export async function postDraftToX(id: string): Promise<Draft> {
+  return invoke<Draft>('post_draft_to_x', { id });
+}
+
+export async function hasXCredentials(): Promise<boolean> {
+  return invoke<boolean>('has_x_credentials', {});
+}
+
+export async function testXCredentials(): Promise<string> {
+  return invoke<string>('test_x_credentials', {});
+}

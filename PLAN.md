@@ -3,7 +3,7 @@
 > **Living document.** This file captures architecture decisions, design discussions, tradeoffs, and the current task breakdown.
 > Update it after any significant conversation or when priorities shift.
 >
-> Last updated: 2026-06-04 (Reset fix: transactional DB delete + verify empty + in-app confirm modal; not blocked by research loading)
+> Last updated: 2026-06-04 (Phase 1 MVP complete: generation, X posting, draft edit, History tab, tests)
 
 ---
 
@@ -45,10 +45,10 @@ This section exists so that future sessions have clear, consistent guidance on h
 - Tests should be fast, reliable, and easy to run locally.
 - The existence of this rule in PLAN.md means we never have the "we'll add tests later" conversation again.
 
-### Current State (as of 2025-05-28)
-- **Frontend**: Vitest + React Testing Library + happy-dom is set up and working. One example test exists (`src/test/example.test.tsx`).
-- **Backend**: First real test added in `commands.rs` (`test_migrations_and_basic_draft_crud`). Uses in-memory SQLite + real migrations. `tokio` added to dev-dependencies.
-- We now have a proven pattern for both sides.
+### Current State (as of 2026-06-04)
+- **Frontend**: Vitest + React Testing Library + happy-dom. Tests cover `db.ts`, `QueueTab`, `DraftEditModal`, `HistoryTab`, `XCredentialsSettings`, `ApiKeySettings`, plus example test.
+- **Backend**: Rust tests in `commands.rs`, `generation.rs`, `x_post.rs`, `research.rs` (RSS network test). In-memory SQLite + real migrations via `create_test_pool()`.
+- Run: `npm test` (frontend), `cd src-tauri && cargo test` (backend).
 
 ### Backend (Rust / Tauri) Testing Approach
 - Use Rust's built-in test framework (`#[test]` functions) + `#[cfg(test)]` modules.
@@ -103,19 +103,14 @@ Add new decisions here as we make them.
 - Placeholder Queue UI with fake draft cards
 
 ### In Progress / Partial
-- None — the backend is ahead of the frontend
+- None for Phase 1 — MVP feature set is complete.
 
-### Not Started (but newly prioritized)
-- **T-000**: Establish testing foundation for Rust + frontend (now highest priority before more feature work)
-
-### Not Started
-- Real research pipeline (X + RSS)
-- Draft generation via Grok
-- Wiring React frontend to Rust commands
-- Editable draft UI
-- X posting flow
-- Background scheduler / tray icon
-- Secure key storage (for packaged builds)
+### Not Started (Phase 2+)
+- Background scheduler / tray icon (T-009)
+- Secure key storage (T-011)
+- Richer source attribution UI (T-012)
+- Unsplash / advanced image support
+- Secure packaging distribution
 
 ---
 
@@ -180,60 +175,35 @@ This is the minimum that makes the app actually useful.
 
 **Important:** Per the Testing Strategy above, every task below must include automated tests as part of completion.
 
-- [ ] **T-000** — Establish testing foundation (highest priority before building more features)
-  - Set up frontend test runner (Vitest + React Testing Library recommended)
-  - Add basic Rust test infrastructure (test module patterns + in-memory DB helper)
-  - Write at least one example test for an existing command (e.g. `create_draft` or `get_drafts`) to prove the pattern works
-  - Document the testing workflow in PLAN.md under Testing Strategy
+- [x] **T-000** — Establish testing foundation
+  - Vitest + RTL + happy-dom; Rust `#[cfg(test)]` + in-memory DB; documented in Testing Strategy.
 
-- [x] **T-001** — Wire React frontend to Rust draft commands (mostly complete)
-  - [x] Replace placeholder cards with real data from `get_drafts`
-  - [x] Implement approve / skip / delete actions calling the backend (via new `db.ts`)
-  - [x] Add loading + error states
-  - [ ] Add automated frontend tests for `db.ts` and QueueTab (in progress — user requested)
-  - Note: "Create Test Draft" helper added for fast manual verification. Full "Research → Generate" flow will feed this queue later (T-006).
+- [x] **T-001** — Wire React frontend to Rust draft commands
+  - Queue tab backed by SQLite; `db.ts` wrappers + tests; `QueueTab` component tests.
 
-- [ ] **T-002** — Build basic draft editing UI
-  - Click-to-edit text in a card or modal
-  - Simple image URL field (or later Unsplash integration)
-  - Live preview of what will be posted
+- [x] **T-002** — Build basic draft editing UI
+  - `DraftEditModal`: edit text, image URL, live preview, sources list; component tests.
 
-- [ ] **T-003** — Implement X research module (backend)
-  - X API client (start with OAuth 1.0a user context)
-  - Semantic + keyword search for Tesla/TSLA/Elon topics
-  - Deduplication / freshness logic
+- [x] **T-003** — X research module (backend)
+  - **Done via Grok + xAI** (`fetch_grok_discovered_x_sources`) — direct X Developer search API intentionally removed per design decision (2025-06-02). High-signal curation + confidence filtering in `research.rs`.
 
-- [ ] **T-004** — Implement RSS research module (backend)
-  - Fetch from key sources (Electrek, Tesla, etc.)
-  - Parse and extract relevant items
+- [x] **T-004** — RSS research module (backend)
+  - `fetch_rss_sources` in `research.rs` (Teslarati, Not a Tesla App); 14-day filter; network test.
 
-- [ ] **T-005** — Draft generation via xAI Grok
-  - Create a prompt template that includes research results
-  - **Critical requirement:** Force "fresh take" behavior — original analysis, implications, or novel framing instead of restating facts or parroting existing commentary. Include strong instructions + few-shot examples of good vs bad output style.
-  - When facts are used, require explicit inline attribution in the generated text (e.g. "According to @Tesla's Q2 delivery numbers..." or "As reported by Electrek...").
-  - Call Grok, parse response, create `Draft` records
-  - Store sources_json properly for citation and for UI display
-  - Consider passing the user's recent posts (from X or local history) into the prompt context to reduce repetition of their own prior takes.
+- [x] **T-005** — Draft generation via xAI Grok
+  - `generation.rs` + `generate_drafts_from_latest_research` command; fresh-take prompt + inline attribution; creates `Draft` rows with `sources_json`.
 
-- [ ] **T-006** — Manual "Research Now" flow (Research tab)
-  - Button that triggers research + generation cycle
-  - Shows progress / results summary
+- [x] **T-006** — Manual research flow (Research tab)
+  - RSS / X / Both buttons; persistence; Historical tab; **Generate Drafts → Queue** button.
 
-- [ ] **T-007** — Real X posting flow
-  - Use stored X credentials
-  - Post text + optional image
-  - On success: call `mark_draft_posted` with the X post ID
-  - Basic error handling + retry
+- [x] **T-007** — Real X posting flow
+  - `post_draft_to_x` via OAuth 1.0a + Twitter API v2; Queue **Approve & Post** calls backend; `mark_draft_posted` with real tweet id.
 
-- [ ] **T-008** — Settings UI for all credentials
-  - xAI key (already partially there)
-  - X API keys (multiple formats)
-  - Optional: Unsplash key
+- [x] **T-008** — Settings UI for credentials
+  - xAI key + Grok model (`ApiKeySettings`); X OAuth 1.0a four-field form (`XCredentialsSettings`) + test connection.
 
-- [ ] **T-015** — Fresh take enforcement & anti-repetition system
-  - Design and implement mechanisms to reduce "parroting" existing discourse.
-  - Options to evaluate: (a) pass user's recent X posts into generation prompt, (b) maintain local cache of recently posted drafts, (c) research layer detects "already widely discussed" angles vs raw facts.
-  - Add UI affordance (in draft card or editing view) to show what the system considered "already covered."
+- [x] **T-015** — Fresh take enforcement (MVP)
+  - Strong generation system prompt; recent **posted** drafts passed into Grok context; edit modal shows research sources + anti-repetition note. Full "already widely discussed" detection deferred to Phase 2/3.
 
 ### Phase 2 — Polish & Reliability
 
@@ -272,6 +242,21 @@ Add new questions here as they come up. Resolve and move to Design Decisions whe
 This section captures key discussions from conversations so future sessions can pick up context quickly.
 
 **Format:** Add new entries at the **top**.
+
+---
+
+### 2026-06-04 — Phase 1 MVP completed
+
+**Shipped:**
+- `generation.rs` — Grok draft generation with fresh-take + attribution prompts; anti-repetition via recent posted drafts.
+- `x_post.rs` — OAuth 1.0a signing + `post_tweet` + `verify_credentials`.
+- Commands: `generate_drafts_from_latest_research`, `post_draft_to_x`, `test_x_credentials`, `has_x_credentials`.
+- UI: `DraftEditModal`, `QueueTab` (real X post), `HistoryTab`, `XCredentialsSettings`, Research **Generate Drafts → Queue**.
+- Tests: 12 Rust + 31 Vitest (fixed ApiKeySettings unhappy-path mock ordering).
+
+**Commits:** reset fix + Phase 1 feature commit(s) on `main`.
+
+**Note:** T-003 original spec (direct X API search) superseded by Grok-only research. T-015 full discourse detection remains future work.
 
 ---
 
