@@ -369,6 +369,81 @@ mod tests {
 
         assert_eq!(value, Some("".to_string()));
     }
+
+    #[tokio::test]
+    async fn test_reset_research_data_clears_runs_and_sources() {
+        let db = create_test_pool().await;
+
+        // Seed a run + source (simulating what run_research does)
+        let run_id = "test-run-reset-1";
+        sqlx::query("INSERT INTO research_runs (id, run_at, source) VALUES (?, ?, ?)")
+            .bind(run_id)
+            .bind("2026-01-01T00:00:00Z")
+            .bind("both")
+            .execute(&db)
+            .await
+            .expect("insert run failed");
+
+        sqlx::query(
+            r#"INSERT INTO research_sources (id, run_id, title, content, url, source_name, source_type)
+               VALUES (?, ?, ?, ?, ?, ?, ?)"#
+        )
+            .bind("src-reset-1")
+            .bind(run_id)
+            .bind("Some Tesla news")
+            .bind("Details here")
+            .bind("https://example.com/tesla")
+            .bind("Teslarati")
+            .bind("rss")
+            .execute(&db)
+            .await
+            .expect("insert source failed");
+
+        // Pre-check counts via direct queries
+        let run_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM research_runs")
+            .fetch_one(&db)
+            .await
+            .expect("count runs");
+        let src_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM research_sources")
+            .fetch_one(&db)
+            .await
+            .expect("count sources");
+        assert_eq!(run_count, 1, "should have seeded run");
+        assert_eq!(src_count, 1, "should have seeded source");
+
+        // Also verify get_all_historical would see it (join)
+        let hist: Vec<HistoricalResearchSource> = sqlx::query_as(
+            r#"SELECT rs.*, rr.run_at FROM research_sources rs JOIN research_runs rr ON rs.run_id=rr.id"#
+        )
+        .fetch_all(&db)
+        .await
+        .expect("hist fetch");
+        assert_eq!(hist.len(), 1);
+
+        // Execute reset
+        reset_research_data_db(&db).await.expect("reset_research_data_db failed");
+
+        // Post-check: both tables empty
+        let run_count2: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM research_runs")
+            .fetch_one(&db)
+            .await
+            .expect("count runs after");
+        let src_count2: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM research_sources")
+            .fetch_one(&db)
+            .await
+            .expect("count sources after");
+        assert_eq!(run_count2, 0, "runs should be cleared by reset");
+        assert_eq!(src_count2, 0, "sources should be cleared by reset");
+
+        // get_all should also return empty
+        let hist2: Vec<HistoricalResearchSource> = sqlx::query_as(
+            r#"SELECT rs.*, rr.run_at FROM research_sources rs JOIN research_runs rr ON rs.run_id=rr.id"#
+        )
+        .fetch_all(&db)
+        .await
+        .expect("hist fetch after");
+        assert_eq!(hist2.len(), 0);
+    }
 }
 
 // ============================================

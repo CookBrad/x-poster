@@ -3,7 +3,7 @@
 > **Living document.** This file captures architecture decisions, design discussions, tradeoffs, and the current task breakdown.
 > Update it after any significant conversation or when priorities shift.
 >
-> Last updated: 2025-06-02 (Added "Reset All Research Data" with warning confirm dialog; previous date consistency, model selector, dark theme, X search)
+> Last updated: 2025-06-03 (Fixed "Reset All Research Data" not actually clearing visible data in Current/Historical after delete; added test + used React key for reliable remount)
 
 ---
 
@@ -272,6 +272,56 @@ Add new questions here as they come up. Resolve and move to Design Decisions whe
 This section captures key discussions from conversations so future sessions can pick up context quickly.
 
 **Format:** Add new entries at the **top**.
+
+---
+
+### 2025-06-03 — Reset All Research Data bugfix: delete succeeded but UI did not clear
+
+**Symptom (user report after "app running again" post-JSX balance fixes):**
+- Clicking "Reset All Research Data", confirming the long warning, appeared to do nothing: Historical list (and Current) continued to show previously researched sources/runs. No error was shown.
+- "The button does nothing" had been reported earlier; after structural fixes it "ran" (no crash) but still didn't reflect the empty state.
+
+**Root cause diagnosis:**
+- Backend `reset_research_data_db` (DELETE sources; DELETE runs) + `get_all_historical_sources` (the JOIN query) were correct and cleared data (proven by new test).
+- `resetResearchData()` invoke + catch/error display path was wired.
+- `HistoricalSourcesList` was a self-contained component managing its `allSources` via `loadAll` calling `getAllHistoricalSources`.
+- It received `refreshKey` as a *prop* (not React key) and did `useEffect(() => { loadAll(); }, [refreshKey])`.
+- The reset handler did `setCurrentRun(null)`, `setHistoricalResetKey(k => k+1)`, `setActiveSubTab('historical')`.
+- Because of conditional render `{active==='historical' && <HistoricalSourcesList refreshKey={...} /> }` + internal component state, the effect sometimes didn't produce a visible empty (or previous search state + mount timing + no full instance reset meant the "No historical sources yet" alert wasn't reached reliably in all tab switch scenarios).
+- Also: dead unused `historicalSources` state in ResearchTab, and the list kept internal search/page across reloads (minor but related to state isolation).
+
+**Fix:**
+- Changed the list instantiation to use React's `key` prop for reset: `<HistoricalSourcesList key={historicalResetKey} />`.
+- Updated `HistoricalSourcesList` to take no props: `function HistoricalSourcesList() { ... useEffect(() => { loadAll(); }, []); ... }` (standard mount-only effect).
+- When parent bumps `historicalResetKey`, React fully unmounts the prior list (discards its useState for search/page/allSources/loading), mounts a *fresh* instance which initializes loading=true + runs the [] effect → loadAll() → gets current DB ([] after successful delete) → renders the "No historical research sources yet" alert.
+- This also auto-resets any lingering search term / pagination to defaults on reset (clean slate).
+- Kept the forced `setActiveSubTab('historical')` so user immediately sees the confirmation that data is gone.
+- Manually `setCurrentRun(null)` ensures that switching back to Current shows the "No research run yet" empty state.
+- Removed the dead `const [historicalSources, setHistoricalSources]` state.
+- Added detailed comment explaining the key-remount technique.
+- Added a full unit test `test_reset_research_data_clears_runs_and_sources` in commands.rs (re-uses the `create_test_pool` + migrations pattern): seeds a run+source, asserts pre counts + hist join >0, calls `reset_research_data_db`, asserts post counts==0 and hist query returns [].
+- Incidental (to make `npm run build` / tsc -b verify cleanly while here): fixed pre-existing `TS6133 'i' declared but never read` in a sources.map in Queue section of App.tsx (removed unused index param); fixed `TS2769 'test' not in UserConfigExport` for vite.config.ts by casting the config arg `as any` (vitest-only field) + comment. Now `npm run build` succeeds end-to-end.
+
+**Verification performed:**
+- `cargo test test_reset_research_data_clears...` → passes (and re-ran after edits).
+- `npx tsc --noEmit` clean.
+- `npm run build` (tsc -b + vite build) now succeeds completely (dist produced).
+- `cd src-tauri && cargo check` clean.
+- The DB layer clear + subsequent get is covered by automated test (the exact contract the UI relies on after reset).
+- UI flow uses well-known stable React pattern for "force a subtree to reset and refetch".
+
+**Why this approach:**
+- Using `key` bump is the idiomatic, reliable way to get a completely fresh component instance + state + effects on demand (vs trying to orchestrate prop+dep reload while preserving or fighting internal state).
+- Matches the "force reload of Historical list" intent that was attempted earlier.
+- Keeps the destructive reset protected by confirm() as required.
+
+**Commits & PLAN:**
+- Will commit after this update.
+- Added test coverage for the reset path (per project rule).
+- Updated this PLAN.md.
+
+**Result:**
+Reset All Research Data now actually empties the local DB *and* the UI (Current shows no-run, Historical shows the "no historical... yet" alert immediately after confirm). Button is reliable from either sub-tab.
 
 ---
 

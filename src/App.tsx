@@ -283,7 +283,7 @@ function QueueTab() {
 
                   {sources.length > 0 && (
                     <div className="text-xs opacity-60 mt-2">
-                      Sources: {sources.map((s: any, i: number) => s.user || s.source || s.title).join(', ')}
+                      Sources: {sources.map((s: any) => s.user || s.source || s.title).join(', ')}
                     </div>
                   )}
 
@@ -344,7 +344,6 @@ function ResearchTab() {
   const [activeSubTab, setActiveSubTab] = useState<ResearchSubTab>('current');
 
   const [currentRun, setCurrentRun] = useState<ResearchRunWithSources | null>(null);
-  const [historicalSources, setHistoricalSources] = useState<HistoricalResearchSource[]>([]);
   const [hasXaiKey, setHasXaiKey] = useState<boolean>(false);
   const [historicalResetKey, setHistoricalResetKey] = useState(0);
 
@@ -389,18 +388,11 @@ function ResearchTab() {
 
     try {
       await resetResearchData();
-      // Clear current view and reload historical (which will be empty)
       setCurrentRun(null);
-      // If we are on historical, the child will need reload, but since we control state? 
-      // For simplicity, since HistoricalSourcesList manages its own state, we can trigger a reload by re-mounting or use a key.
-      // Better: add a resetKey or just reload the page data by calling load functions, but since child is separate,
-      // we'll use a simple approach: after reset, if on historical, we need to force the list to reload.
-      // For now, we'll set a state to force re-render of the list.
-      // Actually, to keep simple, after reset we can navigate to current (now empty) and user can switch.
-      // Improved: we'll expose reload via a prop, but to avoid big refactor, use window reload of data by changing a key.
-      // Let's use a simple state key for the historical component.
+      // Bump the key for the Historical list: React will remount <HistoricalSourcesList key=.../>
+      // which resets its internal state and triggers a fresh loadAll() showing the now-empty DB.
       setHistoricalResetKey(prev => prev + 1);
-      setActiveSubTab('current'); // switch to current which is now cleared
+      setActiveSubTab('historical');  // switch to historical to visibly show the cleared data
     } catch (e: any) {
       console.error(e);
       setError('Failed to reset research data: ' + (e?.message || e));
@@ -447,6 +439,19 @@ function ResearchTab() {
         </button>
       </div>
 
+      <div className="flex justify-end mb-2">
+        <button 
+          className="btn btn-error btn-sm"
+          onClick={handleResetResearchData}
+          disabled={loading}
+          title="Permanently delete all research runs and sources"
+        >
+          Reset All Research Data
+        </button>
+      </div>
+
+      {error && <div className="alert alert-error mb-4">{error}</div>}
+
       {activeSubTab === 'current' && (
         <div>
           <div className="flex flex-wrap gap-3 mb-6">
@@ -491,99 +496,85 @@ function ResearchTab() {
             </div>
           )}
 
-          {error && <div className="alert alert-error mb-4">{error}</div>}
-
           {currentRun ? (
-            <div>
-              <h3 className="text-lg font-semibold mb-1">
-                Latest Research Run — {new Date(currentRun.run.run_at).toLocaleString()}
-              </h3>
+                <div>
+                  <h3 className="text-lg font-semibold mb-1">
+                    Latest Research Run — {new Date(currentRun.run.run_at).toLocaleString()}
+                  </h3>
 
-              {/* Source breakdown */}
-              {(() => {
-                const rssCount = currentRun.sources.filter(s => s.source_type === 'rss').length;
-                const grokXCount = currentRun.sources.filter(s => s.source_type === 'x_grok').length;
-                return (
-                  <p className="text-xs mb-4 opacity-75">
-                    {currentRun.sources.length} total sources → {rssCount} from RSS, {grokXCount} from X (via Grok)
-                  </p>
-                );
-              })()}
+                  {/* Source breakdown */}
+                  {(() => {
+                    const rssCount = currentRun.sources.filter(s => s.source_type === 'rss').length;
+                    const grokXCount = currentRun.sources.filter(s => s.source_type === 'x_grok').length;
+                    return (
+                      <p className="text-xs mb-4 opacity-75">
+                        {currentRun.sources.length} total sources → {rssCount} from RSS, {grokXCount} from X (via Grok)
+                      </p>
+                    );
+                  })()}
 
-              {currentRun.sources.every(s => s.source_type !== 'x_grok') && (
-                <div className="alert alert-warning mb-4 text-sm">
-                  No X posts were returned by Grok this time. 
-                  Make sure your <strong>xAI API key</strong> is set in Settings. 
-                  Grok is currently the only source for X content.
-                </div>
-              )}
-
-              {currentRun.sources.some(s => s.source_type === 'x_grok') && (
-                <div className="alert alert-info alert-sm mb-4 text-xs">
-                  X items are Grok-suggested based on its knowledge. Always verify links and quotes — the model can make mistakes.
-                </div>
-              )}
-
-              <div className="space-y-3">
-                {currentRun.sources.map((source, index) => (
-                  <div key={index} className="card bg-base-100 shadow-sm">
-                    <div className="card-body py-3">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          {source.url ? (
-                            <a 
-                              href={source.url} 
-                              target="_blank" 
-                              rel="noopener noreferrer"
-                              className="font-medium hover:underline"
-                            >
-                              {source.title}
-                            </a>
-                          ) : (
-                            <span className="font-medium">{source.title}</span>
-                          )}
-                          <div className="text-xs opacity-60 mt-0.5">
-                            {source.source_name} • {source.published_at 
-                              ? new Date(source.published_at).toLocaleDateString() 
-                              : currentRun 
-                                ? new Date(currentRun.run.run_at).toLocaleDateString() 
-                                : 'Unknown date'}
-                          </div>
-                        </div>
-                        <div className="badge badge-outline badge-sm">{source.source_type}</div>
-                      </div>
-                      <p className="text-sm line-clamp-2 opacity-80 mt-1">{source.content}</p>
-                      {source.source_type === 'x_grok' && (
-                        <div className="text-[10px] text-emerald-600 font-medium mt-1">★ Grok-curated high-signal post</div>
-                      )}
+                  {currentRun.sources.every(s => s.source_type !== 'x_grok') && (
+                    <div className="alert alert-warning mb-4 text-sm">
+                      No X posts were returned by Grok this time. 
+                      Make sure your <strong>xAI API key</strong> is set in Settings. 
+                      Grok is currently the only source for X content.
                     </div>
+                  )}
+
+                  {currentRun.sources.some(s => s.source_type === 'x_grok') && (
+                    <div className="alert alert-info alert-sm mb-4 text-xs">
+                      X items are Grok-suggested based on its knowledge. Always verify links and quotes — the model can make mistakes.
+                    </div>
+                  )}
+
+                  <div className="space-y-3">
+                    {currentRun.sources.map((source, index) => (
+                      <div key={index} className="card bg-base-100 shadow-sm">
+                        <div className="card-body py-3">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              {source.url ? (
+                                <a 
+                                  href={source.url} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="font-medium hover:underline"
+                                >
+                                  {source.title}
+                                </a>
+                              ) : (
+                                <span className="font-medium">{source.title}</span>
+                              )}
+                              <div className="text-xs opacity-60 mt-0.5">
+                                {source.source_name} • {source.published_at 
+                                  ? new Date(source.published_at).toLocaleDateString() 
+                                  : currentRun 
+                                    ? new Date(currentRun.run.run_at).toLocaleDateString() 
+                                    : 'Unknown date'}
+                              </div>
+                            </div>
+                            <div className="badge badge-outline badge-sm">{source.source_type}</div>
+                          </div>
+                          <p className="text-sm line-clamp-2 opacity-80 mt-1">{source.content}</p>
+                          {source.source_type === 'x_grok' && (
+                            <div className="text-[10px] text-emerald-600 font-medium mt-1">★ Grok-curated high-signal post</div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div className="alert alert-info">
-              No research run yet. Click "Run Research Now" to start.<br />
-              <span className="text-xs">Note: X posts come via Grok — make sure your xAI API key is configured in Settings.</span>
+                </div>
+              ) : (
+                <div className="alert alert-info">
+                  No research run yet. Click "Run Research Now" to start.<br />
+                  <span className="text-xs">Note: X posts come via Grok — make sure your xAI API key is configured in Settings.</span>
+                </div>
+              )}
             </div>
           )}
-        </div>
-      )}
 
       {activeSubTab === 'historical' && (
-        <>
-          <div className="flex justify-end mb-2">
-            <button 
-              className="btn btn-error btn-sm"
-              onClick={handleResetResearchData}
-              disabled={loading}
-              title="Permanently delete all research runs and sources"
-            >
-              Reset All Research Data
-            </button>
-          </div>
-          <HistoricalSourcesList key={historicalResetKey} />
-        </>
+        <HistoricalSourcesList key={historicalResetKey} />
       )}
     </div>
   );
@@ -615,6 +606,9 @@ function HistoricalSourcesList() {
     }
   };
 
+  // Load on mount. When parent changes the *key* on this component, React will unmount
+  // the previous instance and mount a fresh one (resetting all internal state incl. search/page),
+  // which causes this effect to run again and fetch the latest (post-reset) data.
   useEffect(() => {
     loadAll();
   }, []);
