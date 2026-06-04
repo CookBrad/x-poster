@@ -1,5 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { createDraft, getDrafts, updateDraft, deleteDraft, markDraftPosted, type Draft } from './db'
+import {
+  createDraft,
+  getDrafts,
+  updateDraft,
+  deleteDraft,
+  markDraftPosted,
+  resetResearchData,
+  getAllHistoricalSources,
+  type Draft,
+} from './db'
 import { invoke } from '@tauri-apps/api/core'
 
 // Mock the Tauri invoke function
@@ -101,6 +110,32 @@ describe('db.ts - Tauri command wrappers', () => {
         id: 'draft-123',
         xPostId: 'x_post_98765',
       })
+    })
+  })
+
+  describe('resetResearchData & getAllHistoricalSources', () => {
+    it('calls reset_research_data command', async () => {
+      mockInvoke.mockResolvedValueOnce({ deleted_sources: 249, deleted_runs: 20 })
+
+      const result = await resetResearchData()
+
+      expect(mockInvoke).toHaveBeenCalledWith('reset_research_data', {})
+      expect(result).toEqual({ deleted_sources: 249, deleted_runs: 20 })
+    })
+
+    it('propagates reset errors from the backend', async () => {
+      mockInvoke.mockRejectedValueOnce(new Error('Failed to delete research sources'))
+
+      await expect(resetResearchData()).rejects.toThrow('Failed to delete research sources')
+    })
+
+    it('fetches historical sources after reset would return empty', async () => {
+      mockInvoke.mockResolvedValueOnce([])
+
+      const result = await getAllHistoricalSources()
+
+      expect(mockInvoke).toHaveBeenCalledWith('get_all_historical_sources')
+      expect(result).toEqual([])
     })
   })
 })

@@ -3,7 +3,7 @@
 > **Living document.** This file captures architecture decisions, design discussions, tradeoffs, and the current task breakdown.
 > Update it after any significant conversation or when priorities shift.
 >
-> Last updated: 2025-06-03 (Fixed "Reset All Research Data" not actually clearing visible data in Current/Historical after delete; added test + used React key for reliable remount)
+> Last updated: 2026-06-04 (Reset fix: transactional DB delete + verify empty + in-app confirm modal; not blocked by research loading)
 
 ---
 
@@ -272,6 +272,37 @@ Add new questions here as they come up. Resolve and move to Design Decisions whe
 This section captures key discussions from conversations so future sessions can pick up context quickly.
 
 **Format:** Add new entries at the **top**.
+
+---
+
+### 2026-06-04 — Reset All Research Data: DB delete actually runs (user report: still not deleting)
+
+**Diagnosis:**
+- Live DB at `~/Library/Application Support/com.bradleycook.xposter/x-poster.db` still had 20 runs / 249 sources after UI "reset" attempts — backend DELETE was never taking effect in practice.
+- Likely causes: `window.confirm()` unreliable in Tauri webview (early return before invoke), reset button `disabled={loading}` during research, and no post-delete verification.
+
+**Fix:**
+- Replaced `window.confirm()` with an in-app daisyUI `<dialog>` modal (explicit Cancel / "Yes, delete everything").
+- Separate `isResetting` state — reset is not blocked by research `loading`.
+- `reset_research_data` now runs in a SQL transaction, returns `{ deleted_sources, deleted_runs }`, and errors if any rows remain after delete.
+- Frontend calls `invoke('reset_research_data', {})`, then re-fetches `getAllHistoricalSources` and throws if anything remains.
+- Shows green success alert with deleted counts, or red error with backend message.
+- Added explicit `"label": "main"` on the window in `tauri.conf.json` (matches capabilities).
+
+**Verification:** `cargo test test_reset_research_data_clears`, `npm test src/lib/db.test.ts`, `tsc --noEmit`. User must restart via `npm run tauri dev` (rebuild Rust) for changes to apply.
+
+---
+
+### 2026-06-04 — Reset All Research Data: reliable historical list clear
+
+**Change:**
+- `HistoricalSourcesList` now takes `reloadToken` and refetches when it changes (parent bumps after successful `resetResearchData`).
+- On each reload, search/pagination/list state is cleared synchronously before the fetch so stale historical rows do not remain visible.
+- Kept `key={historicalResetKey}` for full remount when already on the Historical sub-tab.
+- Reset handler also calls `loadLatest()` so Current reflects an empty DB after wipe.
+- Added Vitest coverage in `db.test.ts` for `resetResearchData` and post-reset `getAllHistoricalSources` returning `[]`.
+
+**Verification:** `cargo test test_reset_research_data_clears`, `npm test`.
 
 ---
 

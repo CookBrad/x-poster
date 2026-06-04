@@ -346,9 +346,12 @@ function ResearchTab() {
   const [currentRun, setCurrentRun] = useState<ResearchRunWithSources | null>(null);
   const [hasXaiKey, setHasXaiKey] = useState<boolean>(false);
   const [historicalResetKey, setHistoricalResetKey] = useState(0);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   const [loading, setLoading] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [resetSuccess, setResetSuccess] = useState<string | null>(null);
 
   const loadLatest = async () => {
     try {
@@ -375,29 +378,36 @@ function ResearchTab() {
     }
   };
 
-  const handleResetResearchData = async () => {
-    const confirmed = confirm(
-      '⚠️ WARNING: This will permanently delete ALL researched data.\n\n' +
-      'This includes every research run and all associated sources (RSS + X/Grok items) stored in your local database.\n\n' +
-      'This action CANNOT be undone. Are you sure you want to continue?'
-    );
-    if (!confirmed) return;
-
-    setLoading(true);
+  const performResetResearchData = async () => {
+    setShowResetConfirm(false);
+    setIsResetting(true);
     setError(null);
+    setResetSuccess(null);
 
     try {
-      await resetResearchData();
+      const result = await resetResearchData();
+
+      // Belt-and-suspenders: confirm the DB is actually empty before updating UI.
+      const remaining = await getAllHistoricalSources();
+      if (remaining.length > 0) {
+        throw new Error(
+          `Reset reported success but ${remaining.length} historical source(s) still remain in the database.`
+        );
+      }
+
       setCurrentRun(null);
-      // Bump the key for the Historical list: React will remount <HistoricalSourcesList key=.../>
-      // which resets its internal state and triggers a fresh loadAll() showing the now-empty DB.
       setHistoricalResetKey(prev => prev + 1);
-      setActiveSubTab('historical');  // switch to historical to visibly show the cleared data
-    } catch (e: any) {
+      await loadLatest();
+      setActiveSubTab('historical');
+      setResetSuccess(
+        `Deleted ${result.deleted_sources} source(s) and ${result.deleted_runs} research run(s).`
+      );
+    } catch (e: unknown) {
       console.error(e);
-      setError('Failed to reset research data: ' + (e?.message || e));
+      const message = e instanceof Error ? e.message : String(e);
+      setError('Failed to reset research data: ' + message);
     } finally {
-      setLoading(false);
+      setIsResetting(false);
     }
   };
 
@@ -442,15 +452,56 @@ function ResearchTab() {
       <div className="flex justify-end mb-2">
         <button 
           className="btn btn-error btn-sm"
-          onClick={handleResetResearchData}
-          disabled={loading}
+          onClick={() => setShowResetConfirm(true)}
+          disabled={isResetting}
           title="Permanently delete all research runs and sources"
         >
-          Reset All Research Data
+          {isResetting ? 'Resetting…' : 'Reset All Research Data'}
         </button>
       </div>
 
+      {showResetConfirm && (
+        <dialog className="modal modal-open">
+          <div className="modal-box">
+            <h3 className="font-bold text-lg text-error">Reset all research data?</h3>
+            <p className="py-4 text-sm">
+              This permanently deletes every research run and all associated sources (RSS + X/Grok)
+              from your local database. This cannot be undone.
+            </p>
+            <div className="modal-action">
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setShowResetConfirm(false)}
+                disabled={isResetting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-error"
+                onClick={() => void performResetResearchData()}
+                disabled={isResetting}
+              >
+                {isResetting ? (
+                  <>
+                    <span className="loading loading-spinner loading-xs" />
+                    Deleting…
+                  </>
+                ) : (
+                  'Yes, delete everything'
+                )}
+              </button>
+            </div>
+          </div>
+          <form method="dialog" className="modal-backdrop">
+            <button type="button" onClick={() => setShowResetConfirm(false)}>close</button>
+          </form>
+        </dialog>
+      )}
+
       {error && <div className="alert alert-error mb-4">{error}</div>}
+      {resetSuccess && <div className="alert alert-success mb-4">{resetSuccess}</div>}
 
       {activeSubTab === 'current' && (
         <div>
@@ -574,7 +625,10 @@ function ResearchTab() {
           )}
 
       {activeSubTab === 'historical' && (
-        <HistoricalSourcesList key={historicalResetKey} />
+        <HistoricalSourcesList
+          key={historicalResetKey}
+          reloadToken={historicalResetKey}
+        />
       )}
     </div>
   );
@@ -583,7 +637,7 @@ function ResearchTab() {
 // ============================================
 // HistoricalSourcesList - Flat aggregated list of all research sources (paginated + searchable)
 // ============================================
-function HistoricalSourcesList() {
+function HistoricalSourcesList({ reloadToken }: { reloadToken: number }) {
   const [allSources, setAllSources] = useState<HistoricalResearchSource[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [pageSize, setPageSize] = useState(25);
@@ -592,26 +646,39 @@ function HistoricalSourcesList() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadAll = async () => {
+  // Refetch whenever parent bumps reloadToken (e.g. after Reset All Research Data).
+  // Clear local list immediately so stale historical rows never linger during the request.
+  useEffect(() => {
+    setSearchTerm('');
+    setCurrentPage(1);
+    setAllSources([]);
     setLoading(true);
     setError(null);
-    try {
-      const all = await getAllHistoricalSources();
-      setAllSources(all);
-    } catch (e: any) {
-      console.error(e);
-      setError('Failed to load historical research sources.');
-    } finally {
-      setLoading(false);
-    }
-  };
 
-  // Load on mount. When parent changes the *key* on this component, React will unmount
-  // the previous instance and mount a fresh one (resetting all internal state incl. search/page),
-  // which causes this effect to run again and fetch the latest (post-reset) data.
-  useEffect(() => {
-    loadAll();
-  }, []);
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const all = await getAllHistoricalSources();
+        if (!cancelled) {
+          setAllSources(all);
+        }
+      } catch (e: unknown) {
+        console.error(e);
+        if (!cancelled) {
+          setError('Failed to load historical research sources.');
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [reloadToken]);
 
   // Filter sources based on search term
   const filteredSources = useMemo(() => {

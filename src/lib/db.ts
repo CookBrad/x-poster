@@ -142,10 +142,15 @@ export async function getAllHistoricalSources(): Promise<HistoricalResearchSourc
   return invoke<HistoricalResearchSource[]>('get_all_historical_sources');
 }
 
+export interface ResetResearchResult {
+  deleted_sources: number;
+  deleted_runs: number;
+}
+
 /**
  * Permanently deletes all research runs and sources from the local database.
  * This cannot be undone. Use with caution (UI should show a warning prompt).
  */
-export async function resetResearchData(): Promise<void> {
-  return invoke('reset_research_data');
+export async function resetResearchData(): Promise<ResetResearchResult> {
+  return invoke<ResetResearchResult>('reset_research_data', {});
 }

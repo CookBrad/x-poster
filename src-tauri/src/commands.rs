@@ -421,7 +421,9 @@ mod tests {
         assert_eq!(hist.len(), 1);
 
         // Execute reset
-        reset_research_data_db(&db).await.expect("reset_research_data_db failed");
+        let result = reset_research_data_db(&db).await.expect("reset_research_data_db failed");
+        assert_eq!(result.deleted_sources, 1);
+        assert_eq!(result.deleted_runs, 1);
 
         // Post-check: both tables empty
         let run_count2: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM research_runs")
@@ -721,24 +723,67 @@ pub async fn get_all_historical_sources(state: State<'_, AppState>) -> Result<Ve
     Ok(sources)
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct ResetResearchResult {
+    pub deleted_sources: u64,
+    pub deleted_runs: u64,
+}
+
 #[tauri::command]
-pub async fn reset_research_data(state: State<'_, AppState>) -> Result<(), String> {
+pub async fn reset_research_data(state: State<'_, AppState>) -> Result<ResetResearchResult, String> {
     reset_research_data_db(&state.db).await
 }
 
-pub async fn reset_research_data_db(db: &SqlitePool) -> Result<(), String> {
-    // Delete sources explicitly (cascade would handle via runs, but be explicit)
-    sqlx::query("DELETE FROM research_sources")
-        .execute(db)
+pub async fn reset_research_data_db(db: &SqlitePool) -> Result<ResetResearchResult, String> {
+    let mut tx = db
+        .begin()
+        .await
+        .map_err(|e| format!("Failed to start reset transaction: {}", e))?;
+
+    let sources_result = sqlx::query("DELETE FROM research_sources")
+        .execute(&mut *tx)
         .await
         .map_err(|e| format!("Failed to delete research sources: {}", e))?;
 
-    sqlx::query("DELETE FROM research_runs")
-        .execute(db)
+    let runs_result = sqlx::query("DELETE FROM research_runs")
+        .execute(&mut *tx)
         .await
         .map_err(|e| format!("Failed to delete research runs: {}", e))?;
 
-    Ok(())
+    tx.commit()
+        .await
+        .map_err(|e| format!("Failed to commit reset transaction: {}", e))?;
+
+    let remaining_sources: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM research_sources")
+        .fetch_one(db)
+        .await
+        .map_err(|e| format!("Failed to verify research sources deletion: {}", e))?;
+
+    let remaining_runs: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM research_runs")
+        .fetch_one(db)
+        .await
+        .map_err(|e| format!("Failed to verify research runs deletion: {}", e))?;
+
+    if remaining_sources > 0 || remaining_runs > 0 {
+        return Err(format!(
+            "Reset incomplete: {} source(s) and {} run(s) still in database",
+            remaining_sources, remaining_runs
+        ));
+    }
+
+    let deleted_sources = sources_result.rows_affected();
+    let deleted_runs = runs_result.rows_affected();
+
+    log::info!(
+        "reset_research_data: deleted {} sources and {} runs (verified empty)",
+        deleted_sources,
+        deleted_runs
+    );
+
+    Ok(ResetResearchResult {
+        deleted_sources,
+        deleted_runs,
+    })
 }
 
 // ============================================
