@@ -106,6 +106,30 @@ fn oauth_header(
     Ok(format!("OAuth {}", auth_parts.join(", ")))
 }
 
+fn format_x_api_error(status: reqwest::StatusCode, body: &str) -> String {
+    let parsed: Result<serde_json::Value, _> = serde_json::from_str(body);
+    if let Ok(json) = parsed {
+        let problem_type = json["type"].as_str().unwrap_or("");
+        let detail = json["detail"].as_str().unwrap_or(body);
+
+        if problem_type.contains("oauth1-permissions") {
+            return format!(
+                "X API error ({}): {}. \
+                Your app or access token does not have write permission. In the X Developer Portal: \
+                (1) open your app → Settings → User authentication setup → Edit, \
+                (2) enable OAuth 1.0a and set App permissions to Read and write, \
+                (3) save, then regenerate Access Token and Secret under Keys and tokens, \
+                (4) paste the new tokens into x-poster Settings.",
+                status, detail
+            );
+        }
+
+        return format!("X API error ({}): {}", status, detail);
+    }
+
+    format!("X API error ({}): {}", status, body)
+}
+
 /// Post a text tweet via X API v2 (OAuth 1.0a user context).
 pub async fn post_tweet(creds: &XCredentials, text: &str) -> Result<String, String> {
     let url = "https://api.twitter.com/2/tweets";
@@ -131,7 +155,7 @@ pub async fn post_tweet(creds: &XCredentials, text: &str) -> Result<String, Stri
     let text_body = res.text().await.unwrap_or_default();
 
     if !status.is_success() {
-        return Err(format!("X API error ({}): {}", status, text_body));
+        return Err(format_x_api_error(status, &text_body));
     }
 
     let json: serde_json::Value =
@@ -164,7 +188,7 @@ pub async fn verify_credentials(creds: &XCredentials) -> Result<String, String> 
     let body = res.text().await.unwrap_or_default();
 
     if !status.is_success() {
-        return Err(format!("X credentials check failed ({}): {}", status, body));
+        return Err(format_x_api_error(status, &body));
     }
 
     let json: serde_json::Value =
@@ -214,5 +238,13 @@ mod tests {
         .unwrap();
         assert_eq!(sig1, sig2);
         assert!(!sig1.is_empty());
+    }
+
+    #[test]
+    fn test_format_x_api_error_oauth1_permissions() {
+        let body = r#"{"title":"Forbidden","status":403,"detail":"Your client app is not configured with the appropriate oauth1 app permissions for this endpoint.","type":"https://api.twitter.com/2/problems/oauth1-permissions"}"#;
+        let msg = format_x_api_error(reqwest::StatusCode::FORBIDDEN, body);
+        assert!(msg.contains("Read and write"));
+        assert!(msg.contains("regenerate Access Token"));
     }
 }

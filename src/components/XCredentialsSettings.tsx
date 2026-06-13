@@ -71,6 +71,12 @@ export default function XCredentialsSettings() {
       <p className="text-sm opacity-70 mb-3">
         OAuth 1.0a user context keys for posting approved drafts. Research uses Grok only — these are for posting.
       </p>
+      <ul className="text-xs opacity-70 mb-3 list-disc list-inside max-w-lg space-y-1" data-testid="x-cred-setup-hints">
+        <li>In the X Developer Portal, set app permissions to <strong>Read and write</strong> (not Read only).</li>
+        <li>Enable <strong>OAuth 1.0a</strong> under User authentication setup.</li>
+        <li>After changing permissions, <strong>regenerate</strong> Access Token and Secret — old tokens keep the old scope.</li>
+        <li>Test Connection only checks identity; posting needs write permission on the token.</li>
+      </ul>
 
       {KEYS.map(({ key, label, placeholder }) => (
         <label key={key} className="form-control w-full max-w-md mb-2">
