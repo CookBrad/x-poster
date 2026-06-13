@@ -29,9 +29,11 @@ CRITICAL RULES:
    - You may acknowledge risks, but the net framing should be optimistic about these companies' trajectories and leadership.
 
 3. STOCK TAGS WHEN MARKET-RELEVANT:
-   - If the post relates to Tesla as a public company (deliveries, earnings, valuation, stock reaction, FSD/Robotaxi as TSLA catalysts, energy business, etc.), include the cashtag $TSLA in the post text.
-   - SpaceX, xAI, Neuralink, and Boring Company are private — do not invent tickers for them.
-   - Place $TSLA naturally (often at the end). Do not spam multiple cashtags.
+   - Tesla topics (deliveries, earnings, valuation, FSD/Robotaxi, energy, etc.): include $TSLA.
+   - SpaceX topics (Starship, Starlink, Falcon, launches, valuation/catalyst read-through): include $SPCX.
+   - Use the cashtag(s) that match the company focus. If both are materially relevant, include both.
+   - xAI, Neuralink, and Boring Company have no standard cashtag — do not invent tickers for them.
+   - Place cashtags naturally (often at the end). Do not spam unrelated tags.
 
 4. INLINE ATTRIBUTION:
    - When you use a specific fact from a source, attribute it inline with an @ mention (e.g. "As @SawyerMerritt noted..." or "Per @Teslarati...").
@@ -39,16 +41,17 @@ CRITICAL RULES:
 
 5. Avoid repeating themes from the user's RECENT POSTS list below — find a different angle.
 6. Non-political, company/tech focus only. No partisan takes.
-7. Each post must be under 280 characters (single tweet). Count $TSLA toward the limit.
+7. Each post must be under 280 characters (single tweet). Count cashtags toward the limit.
 
-GOOD: "Per @Teslarati, Austin Robotaxi geofence widened again — the read-through for $TSLA isn't the headline, it's faster real-world miles accruing toward regulatory confidence on unsupervised FSD."
+GOOD (Tesla): "Per @Teslarati, Austin Robotaxi geofence widened again — the read-through for $TSLA isn't the headline, it's faster real-world miles accruing toward regulatory confidence on unsupervised FSD."
+GOOD (SpaceX): "Starship booster catch success isn't just engineering theater — it changes launch cadence economics and is a real $SPCX catalyst for anyone tracking SpaceX valuation read-through."
 BAD (regurgitation): "Teslarati reports Tesla expanded Robotaxi in Austin." (just repeats the source)
 BAD (no insight): "Tesla is doing great things with FSD!" (empty hype)
 BAD (bearish): "Another Robotaxi delay — Tesla keeps overpromising." (negative framing we don't want)
 
 Return ONLY a JSON array (no markdown fences), each object:
 {
-  "text": "the tweet/post text (include $TSLA when Tesla/stock-relevant)",
+  "text": "the tweet/post text (include $TSLA and/or $SPCX when stock-relevant)",
   "rationale": "1 sentence on what useful insight you added beyond the source",
   "primary_author": "username without @ for the main source this draft draws from, or null for RSS-only",
   "primary_source_index": 3
@@ -92,7 +95,7 @@ pub fn build_generation_user_prompt(
          Requirements for each draft:\n\
          - Add genuine insight (implications, read-through, what the market or observers miss) — never just repeat the source.\n\
          - Frame constructively and bullishly toward Elon and his companies while staying factual.\n\
-         - Include $TSLA when the topic is Tesla/stock/market relevant.\n\n\
+         - Include $TSLA for Tesla/market topics and $SPCX for SpaceX/market topics.\n\n\
          ## Sources\n{}\n\n\
          ## User's recent posted drafts (DO NOT repeat these angles)\n{}\n",
         count,
@@ -101,10 +104,10 @@ pub fn build_generation_user_prompt(
     )
 }
 
-const TESLA_STOCK_TAG: &str = "$TSLA";
+pub const STOCK_TAG_TSLA: &str = "$TSLA";
+pub const STOCK_TAG_SPCX: &str = "$SPCX";
 
-/// Whether this draft topic warrants a Tesla cashtag based on post text and linked sources.
-pub fn relates_to_tesla_stock(text: &str, sources: &[ResearchSource]) -> bool {
+fn build_topic_haystack(text: &str, sources: &[ResearchSource]) -> String {
     let mut haystack = text.to_lowercase();
     for source in sources {
         haystack.push(' ');
@@ -114,7 +117,15 @@ pub fn relates_to_tesla_stock(text: &str, sources: &[ResearchSource]) -> bool {
         haystack.push(' ');
         haystack.push_str(&source.source_name.to_lowercase());
     }
+    haystack
+}
 
+fn haystack_contains_any(haystack: &str, signals: &[&str]) -> bool {
+    signals.iter().any(|signal| haystack.contains(signal))
+}
+
+/// Whether this draft topic warrants a Tesla cashtag based on post text and linked sources.
+pub fn relates_to_tesla_stock(text: &str, sources: &[ResearchSource]) -> bool {
     const TESLA_SIGNALS: &[&str] = &[
         "tesla",
         "tsla",
@@ -125,46 +136,69 @@ pub fn relates_to_tesla_stock(text: &str, sources: &[ResearchSource]) -> bool {
         "optimus",
         "gigafactory",
         "supercharger",
-        "elon musk",
-        "delivery",
         "deliveries",
-        "earnings",
-        "valuation",
-        "stock",
-        "shares",
-        "market cap",
     ];
 
-    TESLA_SIGNALS.iter().any(|signal| haystack.contains(signal))
+    haystack_contains_any(&build_topic_haystack(text, sources), TESLA_SIGNALS)
 }
 
-/// Append $TSLA when Tesla-related and not already present, respecting the 280-char limit.
-pub fn ensure_stock_tag(text: &str, tag: &str) -> String {
-    let trimmed = text.trim();
-    if trimmed.is_empty() {
-        return String::new();
+/// Whether this draft topic warrants a SpaceX cashtag based on post text and linked sources.
+pub fn relates_to_spacex_stock(text: &str, sources: &[ResearchSource]) -> bool {
+    const SPACEX_SIGNALS: &[&str] = &[
+        "spacex",
+        "spcx",
+        "starship",
+        "starlink",
+        "falcon",
+        "dragon",
+        "raptor",
+        "booster",
+        "super heavy",
+        "launch",
+        "launches",
+    ];
+
+    haystack_contains_any(&build_topic_haystack(text, sources), SPACEX_SIGNALS)
+}
+
+/// Cashtags to append for this draft, in display order.
+pub fn stock_tags_for_draft(text: &str, sources: &[ResearchSource]) -> Vec<&'static str> {
+    let mut tags = Vec::new();
+    if relates_to_tesla_stock(text, sources) {
+        tags.push(STOCK_TAG_TSLA);
+    }
+    if relates_to_spacex_stock(text, sources) {
+        tags.push(STOCK_TAG_SPCX);
+    }
+    tags
+}
+
+/// Append missing cashtags while respecting the 280-character limit.
+pub fn ensure_stock_tags(text: &str, tags: &[&str]) -> String {
+    let mut result = text.trim().to_string();
+    if result.is_empty() {
+        return result;
     }
 
-    let upper = trimmed.to_uppercase();
-    if upper.contains(tag) || upper.contains("$TSLA") {
-        return trimmed.to_string();
+    for tag in tags {
+        let upper = result.to_uppercase();
+        if upper.contains(tag) {
+            continue;
+        }
+
+        let candidate = format!("{result} {tag}");
+        if candidate.len() <= 280 {
+            result = candidate;
+        }
     }
 
-    let with_tag = format!("{trimmed} {tag}");
-    if with_tag.len() <= 280 {
-        with_tag
-    } else {
-        trimmed.to_string()
-    }
+    result
 }
 
 pub fn finalize_draft_text(text: &str, sources: &[ResearchSource]) -> String {
     let normalized = text.trim().to_string();
-    if relates_to_tesla_stock(&normalized, sources) {
-        ensure_stock_tag(&normalized, TESLA_STOCK_TAG)
-    } else {
-        normalized
-    }
+    let tags = stock_tags_for_draft(&normalized, sources);
+    ensure_stock_tags(&normalized, &tags)
 }
 
 pub fn parse_generated_drafts(content: &str) -> Result<Vec<GeneratedDraftItem>, String> {
@@ -361,6 +395,7 @@ mod tests {
         let prompt = build_generation_system_prompt();
         assert!(prompt.contains("USEFUL INSIGHT"));
         assert!(prompt.contains("$TSLA"));
+        assert!(prompt.contains("$SPCX"));
         assert!(prompt.contains("BULLISH"));
         assert!(prompt.contains("NOT REGURGITATION"));
     }
@@ -378,16 +413,38 @@ mod tests {
     }
 
     #[test]
-    fn test_ensure_stock_tag_appends_tsla_when_missing() {
+    fn test_relates_to_spacex_stock_detects_spacex_topics() {
+        assert!(relates_to_spacex_stock(
+            "Starship catch success changes launch economics",
+            &[]
+        ));
+        assert!(!relates_to_spacex_stock(
+            "Robotaxi geofence expanded in Austin",
+            &[]
+        ));
+    }
+
+    #[test]
+    fn test_ensure_stock_tags_appends_missing_cashtags() {
         let text = "As @Teslarati noted, energy attach rates are accelerating";
-        let result = ensure_stock_tag(text, TESLA_STOCK_TAG);
+        let result = ensure_stock_tags(text, &[STOCK_TAG_TSLA]);
         assert!(result.ends_with("$TSLA"));
     }
 
     #[test]
-    fn test_ensure_stock_tag_skips_when_already_present() {
+    fn test_ensure_stock_tags_skips_when_already_present() {
         let text = "Delivery beat matters for $TSLA margin story";
-        assert_eq!(ensure_stock_tag(text, TESLA_STOCK_TAG), text);
+        assert_eq!(ensure_stock_tags(text, &[STOCK_TAG_TSLA]), text);
+    }
+
+    #[test]
+    fn test_finalize_draft_text_adds_spcx_for_spacex_content() {
+        let result = finalize_draft_text(
+            "Booster catch isn't theater — it compresses reuse timelines for the launch business",
+            &[],
+        );
+        assert!(result.contains("$SPCX"));
+        assert!(!result.contains("$TSLA"));
     }
 
     #[test]

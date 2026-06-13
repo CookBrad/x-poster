@@ -93,7 +93,7 @@ export function DraftEditModal({ draft, open, onClose, onSaved }: DraftEditModal
             </ul>
             <p className="text-[10px] opacity-50 mt-1">
               Drafts aim for useful insight (not headline regurgitation), constructive bullish framing on
-              Musk companies, and $TSLA when stock-relevant.
+              Musk companies, and $TSLA / $SPCX when stock-relevant.
             </p>
           </div>
         )}
