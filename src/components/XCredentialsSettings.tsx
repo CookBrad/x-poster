@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { SETTING_KEYS } from '../lib/constants'
 import { errorMessage } from '../lib/errors'
 import { countFilledFields } from '../lib/settingsUtils'
+import { SecretInput } from './SecretInput'
 
 const CREDENTIAL_FIELDS = [
   {
@@ -40,7 +41,6 @@ interface XCredentialsSettingsProps {
 export default function XCredentialsSettings({ onCredentialsChanged }: XCredentialsSettingsProps) {
   const [values, setValues] = useState<Record<string, string>>({})
   const [savedKeys, setSavedKeys] = useState<Set<string>>(new Set())
-  const [showSecrets, setShowSecrets] = useState(false)
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
@@ -193,15 +193,12 @@ export default function XCredentialsSettings({ onCredentialsChanged }: XCredenti
                   <span className="label-text-alt text-success text-xs">Saved</span>
                 )}
               </div>
-              <input
-                type={showSecrets ? 'text' : 'password'}
-                className="input input-bordered input-sm font-mono"
-                placeholder={placeholder}
+              <SecretInput
                 value={values[key] ?? ''}
-                onChange={(event) =>
-                  setValues((previous) => ({ ...previous, [key]: event.target.value }))
-                }
-                data-testid={`x-cred-${key}`}
+                onChange={(value) => setValues((previous) => ({ ...previous, [key]: value }))}
+                placeholder={placeholder}
+                inputTestId={`x-cred-${key}`}
+                toggleTestId={`x-cred-toggle-${key}`}
               />
               <div className="label py-0 min-h-0">
                 <span className="label-text-alt text-xs opacity-60">{hint}</span>
@@ -210,16 +207,6 @@ export default function XCredentialsSettings({ onCredentialsChanged }: XCredenti
           )
         })}
       </div>
-
-      <label className="label cursor-pointer justify-start gap-2 max-w-lg mt-2">
-        <input
-          type="checkbox"
-          className="checkbox checkbox-xs"
-          checked={showSecrets}
-          onChange={(event) => setShowSecrets(event.target.checked)}
-        />
-        <span className="label-text text-xs">Show credential values</span>
-      </label>
 
       <div className="flex gap-2 mt-4 flex-wrap">
         <button

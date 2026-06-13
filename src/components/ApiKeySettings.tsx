@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { DEFAULT_GROK_MODEL, SETTING_KEYS } from '../lib/constants'
 import { errorMessage } from '../lib/errors'
 import { maskSecret } from '../lib/settingsUtils'
+import { SecretInput } from './SecretInput'
 
 interface ApiKeySettingsProps {
   initialSavedKey?: string
@@ -17,7 +18,7 @@ export default function ApiKeySettings({
 }: ApiKeySettingsProps) {
   const [savedXaiKey, setSavedXaiKey] = useState(initialSavedKey)
   const [xaiKeyInput, setXaiKeyInput] = useState('')
-  const [showXaiKey, setShowXaiKey] = useState(false)
+  const [showSavedKey, setShowSavedKey] = useState(false)
   const [keySaved, setKeySaved] = useState(false)
   const [testResult, setTestResult] = useState('')
   const [error, setError] = useState('')
@@ -143,10 +144,24 @@ export default function ApiKeySettings({
   return (
     <div data-testid="xai-settings">
       {hasSavedKey && (
-        <div className="alert alert-success alert-sm mb-4 py-2" data-testid="xai-key-saved-status">
+        <div
+          className="alert alert-success alert-sm mb-4 py-2 flex flex-wrap items-center justify-between gap-2"
+          data-testid="xai-key-saved-status"
+        >
           <span>
-            Key saved: <span className="font-mono">{maskSecret(effectiveSavedKey)}</span>
+            Key saved:{' '}
+            <span className="font-mono">
+              {showSavedKey ? effectiveSavedKey : maskSecret(effectiveSavedKey)}
+            </span>
           </span>
+          <button
+            type="button"
+            className="btn btn-ghost btn-xs"
+            onClick={() => setShowSavedKey((current) => !current)}
+            data-testid="toggle-saved-xai-key"
+          >
+            {showSavedKey ? 'Hide' : 'Show'}
+          </button>
         </div>
       )}
 
@@ -155,25 +170,14 @@ export default function ApiKeySettings({
           <span className="label-text font-medium">xAI API key</span>
         </div>
 
-        <div className="join w-full">
-          <input
-            type={showXaiKey ? 'text' : 'password'}
-            className="input input-bordered join-item flex-1 font-mono text-sm"
-            placeholder={hasSavedKey ? 'Enter a new key to replace the saved one' : 'sk-…'}
-            value={xaiKeyInput}
-            onChange={(event) => setXaiKeyInput(event.target.value)}
-            data-testid="xai-key-input"
-          />
-          <button
-            type="button"
-            className="btn btn-ghost join-item border border-l-0"
-            onClick={() => setShowXaiKey(!showXaiKey)}
-            aria-label={showXaiKey ? 'Hide API key' : 'Show API key'}
-            data-testid="toggle-visibility"
-          >
-            {showXaiKey ? 'Hide' : 'Show'}
-          </button>
-        </div>
+        <SecretInput
+          value={xaiKeyInput}
+          onChange={setXaiKeyInput}
+          placeholder={hasSavedKey ? 'Enter a new key to replace the saved one' : 'sk-…'}
+          inputTestId="xai-key-input"
+          toggleTestId="toggle-visibility"
+          inputClassName="input input-bordered font-mono text-sm"
+        />
 
         <div className="label">
           <span className="label-text-alt opacity-60">
