@@ -3,7 +3,7 @@
 > **Living document.** This file captures architecture decisions, design discussions, tradeoffs, and the current task breakdown.
 > Update it after any significant conversation or when priorities shift.
 >
-> Last updated: 2026-06-04 (Phase 1 MVP complete: generation, X posting, draft edit, History tab, tests)
+> Last updated: 2026-06-13 (Clean Code principles adopted as mandatory codebase standard)
 
 ---
 
@@ -31,6 +31,61 @@ A **local-first desktop app** that helps the user stay on top of Tesla/TSLA/Elon
 - **Tests for every new feature** — No feature is considered complete until it has automated tests. Tests are part of the definition of done. This applies to both backend commands and frontend behavior.
 - **Simple & reliable** — Prefer boring, debuggable solutions over clever ones.
 - **Secure by default** — Keys move to OS secure storage before any public distribution.
+- **Clean Code always** — All new and changed code must follow the [Code Quality (Clean Code)](#code-quality-clean-code) standards below. This is not optional polish; it is part of how we build in this repo.
+
+---
+
+## Code Quality (Clean Code)
+
+This codebase follows the principles from *Clean Code* by Robert C. Martin ("Uncle Bob"). **Every feature, fix, and refactor must uphold these standards.** When in doubt, prefer readability and small, focused units over cleverness.
+
+### Core principles (always apply)
+
+| Principle | What it means here |
+|-----------|-------------------|
+| **Meaningful names** | Names reveal intent (`fetch_latest_run_with_sources`, `errorMessage`, `DraftSource`). Avoid abbreviations and noise (`data`, `temp`, `handleStuff`). |
+| **Small functions** | Each function does one thing. If it needs a comment to explain *what* it does, extract a named function instead. |
+| **Single responsibility** | One reason to change per module/file. UI shells stay thin (`App.tsx`); domain logic lives in `lib/` or focused components. |
+| **DRY** | Do not duplicate logic. Shared UI → components; shared TS logic → `src/lib/`; shared Rust logic → helpers in the relevant module (or a dedicated module when a file grows too large). |
+| **No magic strings** | Status values, setting keys, defaults, and URL prefixes live in `src/lib/constants.ts` and `src-tauri/src/constants.rs` — not scattered inline. |
+| **Strong typing** | Prefer explicit types over `any`. Parse JSON into named interfaces (`DraftSource`, `DraftStatus`), not untyped blobs. |
+| **Consistent error handling** | One pattern per layer: `errorMessage()` in the frontend; `Result<T, String>` in Rust; surface errors through UI state (`setError`), not ad-hoc `alert()` mixed with banners. |
+| **Comments explain why** | Code should be self-documenting. Comments are for non-obvious *why* (business rules, workarounds), not restating *what* the next line does. Avoid ticket-id section headers (`T-003`) — module names should carry intent. |
+| **Tests stay readable** | Tests read like specifications: clear arrange/act/assert, meaningful names, no opaque mock leakage between cases. |
+
+### Established patterns in this repo
+
+Use and extend these — do not reinvent parallel conventions:
+
+**Frontend (`src/`)**
+- `src/lib/constants.ts` — draft statuses, setting keys, defaults (`DEFAULT_GROK_MODEL`, `DEFAULT_DRAFT_GENERATION_COUNT`, etc.)
+- `src/lib/errors.ts` — `errorMessage(unknown)` for all user-facing error text
+- `src/lib/draftUtils.ts` — pure draft helpers (counts, timestamps, X URLs, source labels)
+- `src/lib/db.ts` — thin Tauri invoke wrappers only; parsing helpers (`parseSources`) live here with proper types
+- Components — one primary concern per file (`PostsTab`, `ResearchTab`, `ResearchSourceCard`, `HistoricalSourcesList`)
+- Props interfaces named explicitly (`DraftCardProps`), not inline anonymous blobs for non-trivial components
+
+**Backend (`src-tauri/src/`)**
+- `constants.rs` — `draft_status`, `settings`, shared defaults
+- Tauri commands stay thin; reusable logic in `*_db` helpers or private functions (`load_grok_settings`, `require_setting`, `fetch_run_with_sources`, `build_draft_source_context`, `maybe_resolve_preview_image`)
+- Parameterized SQL (`?` binds) instead of string-interpolated literals where values vary
+- `#[cfg(test)]` modules colocated; `create_test_pool()` for real migration-backed DB tests
+
+### Definition of done — code quality checklist
+
+Before marking work complete, verify:
+
+- [ ] No new magic strings for statuses, settings, or defaults (use `constants.ts` / `constants.rs`)
+- [ ] No duplicated logic that already has a helper or component
+- [ ] Functions are short and named for intent
+- [ ] Errors handled consistently (no new `alert()` paths in React UI)
+- [ ] Types are explicit; no new `any` without a documented reason
+- [ ] New pure logic has unit tests where practical
+- [ ] Large files were not grown further without extraction (split components/modules when a file becomes hard to scan)
+
+### When refactoring
+
+Prefer incremental Clean Code improvements in the same PR as feature work when touching an area. Do not leave "cleanup for later" if the touched code clearly violates the standards above. A focused 20-line improvement beats a deferred 200-line rewrite.
 
 ---
 
@@ -79,6 +134,7 @@ This section exists so that future sessions have clear, consistent guidance on h
 ### Definition of Done for Any New Work
 When working on a task/feature, the following must be true before marking it complete:
 - [ ] Implementation done and manually verified
+- [ ] [Code Quality (Clean Code)](#code-quality-clean-code) checklist satisfied
 - [ ] Relevant automated tests written and passing
 - [ ] Tests cover happy path + at least one important edge/error case
 - [ ] PLAN.md updated if the work affected design, architecture, or process
