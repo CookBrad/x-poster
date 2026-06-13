@@ -197,10 +197,10 @@ This is the minimum that makes the app actually useful.
   - RSS / X / Both buttons; persistence; Historical tab; **Generate Drafts → Queue** button.
 
 - [x] **T-007** — Real X posting flow
-  - `post_draft_to_x` via OAuth 2.0 (PKCE) + Twitter API v2 Bearer token; Queue **Approve & Post** calls backend; `mark_draft_posted` with real tweet id.
+  - `post_draft_to_x` via OAuth 1.0a + Twitter API v2; Queue **Approve & Post** calls backend; `mark_draft_posted` with real tweet id.
 
 - [x] **T-008** — Settings UI for credentials
-  - xAI key + Grok model (`ApiKeySettings`); X OAuth 2.0 PKCE (`XCredentialsSettings`: client id/secret + Connect with X) + test connection.
+  - xAI key + Grok model (`ApiKeySettings`); X OAuth 1.0a four-field form (`XCredentialsSettings`) + test connection.
 
 - [x] **T-015** — Fresh take enforcement (MVP)
   - Strong generation system prompt; recent **posted** drafts passed into Grok context; edit modal shows research sources + anti-repetition note. Full "already widely discussed" detection deferred to Phase 2/3.
@@ -228,7 +228,7 @@ This is the minimum that makes the app actually useful.
 
 - How aggressive should the research cadence be? (user-configurable?)
 - What's the right balance of "freshness" vs "volume" for drafts?
-- ~~Do we want to support both OAuth 1.0a and OAuth 2.0 for X, or just one?~~ **Resolved:** OAuth 2.0 PKCE only for posting.
+- ~~Do we want to support both OAuth 1.0a and OAuth 2.0 for X, or just one?~~ **Resolved:** OAuth 1.0a for posting (paste tokens from Developer Portal).
 - Image strategy: stock photos, AI-generated, or none for MVP?
 - Rate limiting / cost control for xAI calls?
 - **Fresh take specifics:** How strictly do we enforce original analysis vs allowing some factual summarization? Should the app fetch the user's own recent X posts before generation to avoid self-repetition? How do we detect "already widely discussed angles" in research results?
@@ -249,9 +249,8 @@ This section captures key discussions from conversations so future sessions can 
 
 **Shipped:**
 - `generation.rs` — Grok draft generation with fresh-take + attribution prompts; anti-repetition via recent posted drafts.
-- `x_oauth.rs` — OAuth 2.0 PKCE authorize URL, local callback server, token exchange/refresh.
-- `x_post.rs` — Bearer token `post_tweet` + `verify_credentials`.
-- Commands: `generate_drafts_from_latest_research`, `post_draft_to_x`, `test_x_credentials`, `has_x_credentials`, `connect_x_oauth`, `disconnect_x_oauth`.
+- `x_post.rs` — OAuth 1.0a signing + `post_tweet` + `verify_credentials`.
+- Commands: `generate_drafts_from_latest_research`, `post_draft_to_x`, `test_x_credentials`, `has_x_credentials`.
 - UI: `DraftEditModal`, `QueueTab` (real X post), `HistoryTab`, `XCredentialsSettings`, Research **Generate Drafts → Queue**.
 - Tests: 12 Rust + 31 Vitest (fixed ApiKeySettings unhappy-path mock ordering).
 
