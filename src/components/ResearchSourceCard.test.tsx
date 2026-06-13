@@ -31,4 +31,18 @@ describe('ResearchSourceCard', () => {
     render(<ResearchSourceCard {...baseProps} />)
     expect(screen.queryByTestId('generate-post-source-1')).not.toBeInTheDocument()
   })
+
+  it('shows used badge and hides generate action for used stories', () => {
+    render(
+      <ResearchSourceCard
+        {...baseProps}
+        canGenerate
+        isUsed
+        onGeneratePost={vi.fn()}
+      />
+    )
+
+    expect(screen.getByTestId('used-badge-source-1')).toHaveTextContent('Used')
+    expect(screen.queryByTestId('generate-post-source-1')).not.toBeInTheDocument()
+  })
 })

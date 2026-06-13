@@ -23,6 +23,7 @@ import {
 } from '../lib/draftGeneration'
 import { errorMessage } from '../lib/errors'
 import { researchModeLabel, researchModeRequiresXaiKey } from '../lib/researchMode'
+import { countUnusedResearchSources, isResearchSourceUsed } from '../lib/researchSource'
 import { formatResearchSourceDate, ResearchSourceCard } from './ResearchSourceCard'
 import { HistoricalSourcesList } from './HistoricalSourcesList'
 
@@ -55,6 +56,11 @@ export function ResearchTab() {
     } catch (loadError: unknown) {
       console.error(loadError)
     }
+  }
+
+  const refreshResearchViews = async () => {
+    await loadLatestRun()
+    setHistoricalResetKey((previous) => previous + 1)
   }
 
   const handleRunResearch = async () => {
@@ -94,6 +100,7 @@ export function ResearchTab() {
       setGenerateSuccess(
         `Generated ${drafts.length} post(s) from that story. Open the Posts tab to review.`
       )
+      await refreshResearchViews()
     } catch (generateError: unknown) {
       console.error(generateError)
       setError(errorMessage(generateError, 'Failed to generate post from this story.'))
@@ -112,6 +119,7 @@ export function ResearchTab() {
       setGenerateSuccess(
         `Generated ${drafts.length} draft(s) with insight-focused prompts. Open the Posts tab to review.`
       )
+      await refreshResearchViews()
     } catch (generateError: unknown) {
       console.error(generateError)
       setError(errorMessage(generateError, 'Draft generation failed.'))
@@ -137,6 +145,7 @@ export function ResearchTab() {
       setGenerateSuccess(
         `Researched ${newRun.sources.length} source(s) and generated ${drafts.length} draft(s). Open the Posts tab to review.`
       )
+      await refreshResearchViews()
     } catch (pipelineError: unknown) {
       console.error(pipelineError)
       const fallback =
@@ -207,6 +216,8 @@ export function ResearchTab() {
   const runAllDisabled = isBusy || !hasXaiKey
 
   const activeResearchLabel = researchModeLabel(researchMode)
+  const unusedSourceCount = countUnusedResearchSources(currentRun?.sources ?? [])
+  const hasUnusedSources = unusedSourceCount > 0
 
   return (
     <div>
@@ -356,13 +367,15 @@ export function ResearchTab() {
                     type="button"
                     className="btn btn-sm btn-warning"
                     onClick={() => void handleGenerateDrafts()}
-                    disabled={generateDisabled}
+                    disabled={generateDisabled || !hasUnusedSources}
                     title={
                       !hasXaiKey
                         ? 'xAI key required'
                         : !currentRun
                           ? 'Run research first'
-                          : `Generate ${draftCount} post(s) from latest research`
+                          : !hasUnusedSources
+                            ? 'All stories have already been used'
+                            : `Generate up to ${draftCount} post(s) from unused stories`
                     }
                     data-testid="generate-button"
                   >
@@ -377,7 +390,7 @@ export function ResearchTab() {
                     title={
                       !hasXaiKey
                         ? 'xAI key required'
-                        : `Research ${activeResearchLabel}, then generate ${draftCount} post(s)`
+                        : `Research ${activeResearchLabel}, then generate up to ${draftCount} unused post(s)`
                     }
                     data-testid="run-all-button"
                   >
@@ -422,7 +435,8 @@ export function ResearchTab() {
 
               <p className="text-xs mb-4 opacity-75">
                 {currentRun.sources.length} total sources → {rssCount} from RSS, {grokXCount} from X
-                (via Grok)
+                (via Grok) • {unusedSourceCount} unused,{' '}
+                {currentRun.sources.length - unusedSourceCount} used
               </p>
 
               {currentRun.sources.every(
@@ -459,6 +473,7 @@ export function ResearchTab() {
                       currentRun.run.run_at
                     )}
                     canGenerate={hasXaiKey}
+                    isUsed={isResearchSourceUsed(source)}
                     generating={generatingSourceId === source.id}
                     onGeneratePost={(sourceId) => void handleGenerateFromSource(sourceId)}
                   />

@@ -454,6 +454,8 @@ pub async fn generate_drafts_from_sources_db(
             image_url,
         };
         let draft = create_draft_db(db, input).await?;
+        let source_ids: Vec<String> = draft_sources.iter().map(|source| source.id.clone()).collect();
+        crate::commands::mark_research_sources_used_db(db, &source_ids).await?;
         drafts.push(draft);
     }
 
@@ -480,6 +482,7 @@ mod tests {
             quote_count: None,
             original_id: None,
             media_url: None,
+            used_at: None,
         }];
         let item = GeneratedDraftItem {
             text: "Unrelated draft with no index".into(),
@@ -550,6 +553,7 @@ mod tests {
             quote_count: None,
             original_id: None,
             media_url: None,
+            used_at: None,
         }];
         let draft = "Actually Smart Summon arriving on Cybertruck via v14.3.4 and steer-by-wire extends \
             low-speed autonomy to a high-volume unique platform. This diversifies real-world edge cases \
@@ -576,6 +580,7 @@ mod tests {
             quote_count: None,
             original_id: None,
             media_url: None,
+            used_at: None,
         }];
         let result = normalize_rss_attribution(
             "Per @Teslarati, deliveries beat — margin mix is the insight",
@@ -601,6 +606,7 @@ mod tests {
             quote_count: None,
             original_id: None,
             media_url: None,
+            used_at: None,
         };
         assert_eq!(
             format_source_attribution(&source),
@@ -647,6 +653,7 @@ mod tests {
             quote_count: None,
             original_id: None,
             media_url: None,
+            used_at: None,
         }];
         let result = finalize_draft_text(
             "Per source: Teslarati, deliveries beat — the insight is energy margin mix, not the headline number",
@@ -672,6 +679,7 @@ mod tests {
             quote_count: None,
             original_id: None,
             media_url: None,
+            used_at: None,
         }];
         let prompt = build_generation_user_prompt(&sources, &[], 1);
         assert!(prompt.contains("source: Not A Tesla App"));
@@ -694,6 +702,7 @@ mod tests {
             quote_count: None,
             original_id: None,
             media_url: None,
+            used_at: None,
         }];
         let prompt = build_generation_user_prompt(&sources, &["Old post about Cybertruck".into()], 2);
         assert!(prompt.contains("Robotaxi"));

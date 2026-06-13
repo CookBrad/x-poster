@@ -351,6 +351,7 @@ mod tests {
             quote_count: None,
             original_id: Some("1234567890".into()),
             media_url: None,
+            used_at: None,
         }
     }
 

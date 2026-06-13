@@ -82,6 +82,8 @@ export interface ResearchSource {
   quote_count?: number;
   // The original identifier from the source (useful when the row id is a surrogate)
   original_id?: string;
+  media_url?: string | null;
+  used_at?: string | null;
 }
 
 export async function fetchResearchSources(): Promise<ResearchSource[]> {

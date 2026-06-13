@@ -729,6 +729,8 @@ pub struct HistoricalResearchSource {
     pub reply_count: Option<i32>,
     pub quote_count: Option<i32>,
     pub original_id: Option<String>,
+    pub media_url: Option<String>,
+    pub used_at: Option<String>,
     pub run_at: String,
 }
 
@@ -811,8 +813,8 @@ pub async fn run_research(state: State<'_, AppState>, mode: Option<String>) -> R
             INSERT OR IGNORE INTO research_sources (
                 id, run_id, title, content, url, published_at, 
                 source_name, source_type, retweet_count, like_count, 
-                reply_count, quote_count, original_id, media_url
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                reply_count, quote_count, original_id, media_url, used_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
             "#
         )
         .bind(&row_id)
@@ -835,12 +837,16 @@ pub async fn run_research(state: State<'_, AppState>, mode: Option<String>) -> R
     }
 
     let run = ResearchRun {
-        id: run_id,
+        id: run_id.clone(),
         run_at,
         source: run_source.to_string(),
     };
 
-    Ok(ResearchRunWithSources { run, sources })
+    let saved_sources = fetch_sources_for_run(&state.db, &run_id).await?;
+    Ok(ResearchRunWithSources {
+        run,
+        sources: saved_sources,
+    })
 }
 
 #[tauri::command]
@@ -955,33 +961,63 @@ pub async fn reset_research_data_db(db: &SqlitePool) -> Result<ResetResearchResu
 // Draft generation (T-005 / T-006 / T-015)
 // ============================================
 
+pub async fn mark_research_sources_used_db(
+    db: &SqlitePool,
+    source_ids: &[String],
+) -> Result<(), String> {
+    if source_ids.is_empty() {
+        return Ok(());
+    }
+
+    let now = chrono::Utc::now().to_rfc3339();
+    for source_id in source_ids {
+        sqlx::query(
+            "UPDATE research_sources SET used_at = ? WHERE id = ? AND used_at IS NULL",
+        )
+        .bind(&now)
+        .bind(source_id)
+        .execute(db)
+        .await
+        .map_err(|e| format!("Failed to mark research source as used: {}", e))?;
+    }
+
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn generate_drafts_from_latest_research(
     state: State<'_, AppState>,
     count: Option<u32>,
 ) -> Result<Vec<Draft>, String> {
-    let count = count.unwrap_or(DEFAULT_DRAFT_COUNT).clamp(1, MAX_DRAFT_COUNT);
+    let requested_count = count.unwrap_or(DEFAULT_DRAFT_COUNT).clamp(1, MAX_DRAFT_COUNT);
 
     let latest_run = fetch_latest_run_with_sources(&state.db)
         .await?
         .ok_or("No research run found. Run research first, then generate drafts.".to_string())?;
 
-    if latest_run.sources.is_empty() {
-        return Err("Latest research run has no sources to generate from.".to_string());
+    let unused_sources = research::unused_research_sources(&latest_run.sources);
+    if unused_sources.is_empty() {
+        return Err(
+            "All research sources have already been used. Run new research to find fresh stories."
+                .to_string(),
+        );
     }
+
+    let available = unused_sources.len() as u32;
+    let count = requested_count.min(available);
 
     let xai_key = require_xai_api_key(&state.db).await?;
     let (_, grok_model) = load_grok_settings(&state.db).await?;
 
     log::info!(
-        "generate_drafts_from_latest_research: {} sources, count={}",
-        latest_run.sources.len(),
+        "generate_drafts_from_latest_research: {} unused sources, count={}",
+        unused_sources.len(),
         count
     );
 
     generation::generate_drafts_from_sources_db(
         &state.db,
-        &latest_run.sources,
+        &unused_sources,
         &xai_key,
         &grok_model,
         count,
@@ -1009,6 +1045,12 @@ pub async fn generate_draft_from_source(
 ) -> Result<Vec<Draft>, String> {
     let count = count.unwrap_or(1).clamp(1, MAX_DRAFT_COUNT);
     let source = fetch_research_source_by_id(&state.db, &source_id).await?;
+    if research::is_research_source_used(&source) {
+        return Err(
+            "This research source has already been used for draft generation.".to_string(),
+        );
+    }
+
     let xai_key = require_xai_api_key(&state.db).await?;
     let (_, grok_model) = load_grok_settings(&state.db).await?;
 

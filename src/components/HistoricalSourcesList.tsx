@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { getAllHistoricalSources, type HistoricalResearchSource } from '../lib/db'
 import { errorMessage } from '../lib/errors'
+import { isResearchSourceUsed } from '../lib/researchSource'
 import { formatResearchSourceDate, ResearchSourceCard } from './ResearchSourceCard'
 
 interface HistoricalSourcesListProps {
@@ -182,6 +183,7 @@ export function HistoricalSourcesList({
               sourceType={source.source_type}
               dateLabel={formatResearchSourceDate(source.published_at, source.run_at)}
               canGenerate={hasXaiKey}
+              isUsed={isResearchSourceUsed(source)}
               generating={generatingSourceId === source.id}
               onGeneratePost={onGenerateFromSource}
             />

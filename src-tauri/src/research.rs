@@ -27,6 +27,21 @@ pub struct ResearchSource {
 
     /// Direct image URL from the source post (X photo), when known.
     pub media_url: Option<String>,
+
+    /// Set when this source has been used to generate a draft post.
+    pub used_at: Option<DateTime<Utc>>,
+}
+
+pub fn is_research_source_used(source: &ResearchSource) -> bool {
+    source.used_at.is_some()
+}
+
+pub fn unused_research_sources(sources: &[ResearchSource]) -> Vec<ResearchSource> {
+    sources
+        .iter()
+        .filter(|source| !is_research_source_used(source))
+        .cloned()
+        .collect()
 }
 
 /// Fetches recent items from a list of RSS feeds relevant to Tesla/TSLA/Elon.
@@ -121,6 +136,7 @@ async fn fetch_single_rss(client: &Client, url: &str) -> Result<Vec<ResearchSour
             quote_count: None,
             original_id: Some(entry.id.clone()),
             media_url: None,
+            used_at: None,
         });
     }
 
@@ -432,6 +448,7 @@ If verbatim recent posts are limited, still return the best substantive items yo
             quote_count: None,
             original_id,
             media_url,
+            used_at: None,
         });
     }
 
@@ -447,6 +464,48 @@ If verbatim recent posts are limited, still return the best substantive items yo
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_unused_research_sources_filters_used_rows() {
+        let sources = vec![
+            ResearchSource {
+                id: "1".into(),
+                title: "Fresh".into(),
+                content: "A".into(),
+                url: "https://example.com/a".into(),
+                published_at: None,
+                source_name: "Teslarati".into(),
+                source_type: "rss".into(),
+                retweet_count: None,
+                like_count: None,
+                reply_count: None,
+                quote_count: None,
+                original_id: None,
+                media_url: None,
+                used_at: None,
+            },
+            ResearchSource {
+                id: "2".into(),
+                title: "Old".into(),
+                content: "B".into(),
+                url: "https://example.com/b".into(),
+                published_at: None,
+                source_name: "Not A Tesla App".into(),
+                source_type: "rss".into(),
+                retweet_count: None,
+                like_count: None,
+                reply_count: None,
+                quote_count: None,
+                original_id: None,
+                media_url: None,
+                used_at: Some(Utc::now()),
+            },
+        ];
+
+        let unused = unused_research_sources(&sources);
+        assert_eq!(unused.len(), 1);
+        assert_eq!(unused[0].id, "1");
+    }
 
     #[tokio::test]
     async fn test_fetch_rss_sources_returns_some_recent_items_or_graceful_empty() {

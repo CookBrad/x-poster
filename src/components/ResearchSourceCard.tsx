@@ -9,6 +9,7 @@ export interface ResearchSourceCardProps {
   sourceType: string
   dateLabel: string
   canGenerate?: boolean
+  isUsed?: boolean
   generating?: boolean
   onGeneratePost?: (sourceId: string) => void
 }
@@ -22,9 +23,11 @@ export function ResearchSourceCard({
   sourceType,
   dateLabel,
   canGenerate = false,
+  isUsed = false,
   generating = false,
   onGeneratePost,
 }: ResearchSourceCardProps) {
+  const allowGenerate = canGenerate && !isUsed
   const displaySourceName =
     sourceType === RESEARCH_SOURCE_TYPE.rss
       ? `source: ${sourceName.replace(/^@/, '')}`
@@ -38,17 +41,17 @@ export function ResearchSourceCard({
 
   return (
     <div
-      className={`card bg-base-100 shadow-sm ${canGenerate ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}
-      onClick={canGenerate && !generating ? handleGenerate : undefined}
+      className={`card bg-base-100 shadow-sm ${allowGenerate ? 'cursor-pointer hover:shadow-md transition-shadow' : ''} ${isUsed ? 'opacity-70' : ''}`}
+      onClick={allowGenerate && !generating ? handleGenerate : undefined}
       onKeyDown={(event) => {
-        if (!canGenerate || generating || !onGeneratePost) return
+        if (!allowGenerate || generating || !onGeneratePost) return
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault()
           handleGenerate()
         }
       }}
-      role={canGenerate ? 'button' : undefined}
-      tabIndex={canGenerate ? 0 : undefined}
+      role={allowGenerate ? 'button' : undefined}
+      tabIndex={allowGenerate ? 0 : undefined}
       data-testid={`research-source-card-${sourceId}`}
     >
       <div className="card-body py-3">
@@ -71,7 +74,14 @@ export function ResearchSourceCard({
               {displaySourceName} • {dateLabel}
             </div>
           </div>
-          <div className="badge badge-outline badge-sm shrink-0">{sourceType}</div>
+          <div className="flex flex-col items-end gap-1 shrink-0">
+            {isUsed && (
+              <div className="badge badge-neutral badge-sm" data-testid={`used-badge-${sourceId}`}>
+                Used
+              </div>
+            )}
+            <div className="badge badge-outline badge-sm">{sourceType}</div>
+          </div>
         </div>
 
         <p className="text-sm line-clamp-2 opacity-80 mt-1">{content}</p>
@@ -82,7 +92,7 @@ export function ResearchSourceCard({
           </div>
         )}
 
-        {canGenerate && (
+        {canGenerate && !isUsed && (
           <div className="card-actions justify-end mt-2">
             <button
               type="button"
