@@ -16,7 +16,17 @@ export const SETTING_KEYS = {
 } as const
 
 export const DEFAULT_GROK_MODEL = 'grok-4.3'
+export const MIN_DRAFT_GENERATION_COUNT = 1
 export const DEFAULT_DRAFT_GENERATION_COUNT = 3
+export const MAX_DRAFT_GENERATION_COUNT = 10
+export const DRAFT_COUNT_STORAGE_KEY = 'draft_generation_count'
+
+export function clampDraftCount(count: number): number {
+  return Math.min(
+    MAX_DRAFT_GENERATION_COUNT,
+    Math.max(MIN_DRAFT_GENERATION_COUNT, Math.round(count))
+  )
+}
 export const SIMULATED_POST_ID_PREFIX = 'sim_'
 export const X_STATUS_URL_BASE = 'https://x.com/i/web/status/'
 

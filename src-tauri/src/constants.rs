@@ -16,5 +16,5 @@ pub mod settings {
 
 pub const DEFAULT_GROK_MODEL: &str = "grok-4.3";
 pub const DEFAULT_DRAFT_COUNT: u32 = 3;
-pub const MAX_DRAFT_COUNT: u32 = 5;
+pub const MAX_DRAFT_COUNT: u32 = 10;
 pub const RESEARCH_SOURCE_LIMIT: usize = 30;

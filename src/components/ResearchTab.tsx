@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import {
-  DEFAULT_DRAFT_GENERATION_COUNT,
+  MAX_DRAFT_GENERATION_COUNT,
+  MIN_DRAFT_GENERATION_COUNT,
   RESEARCH_SOURCE_TYPE,
   SETTING_KEYS,
 } from '../lib/constants'
@@ -13,6 +14,7 @@ import {
   runResearch,
   type ResearchRunWithSources,
 } from '../lib/db'
+import { loadDraftGenerationCount, saveDraftGenerationCount } from '../lib/draftGeneration'
 import { errorMessage } from '../lib/errors'
 import { formatResearchSourceDate, ResearchSourceCard } from './ResearchSourceCard'
 import { HistoricalSourcesList } from './HistoricalSourcesList'
@@ -26,12 +28,17 @@ export function ResearchTab() {
   const [hasXaiKey, setHasXaiKey] = useState(false)
   const [historicalResetKey, setHistoricalResetKey] = useState(0)
   const [showResetConfirm, setShowResetConfirm] = useState(false)
+  const [draftCount, setDraftCount] = useState(loadDraftGenerationCount)
   const [loading, setLoading] = useState(false)
   const [generating, setGenerating] = useState(false)
+  const [pipelinePhase, setPipelinePhase] = useState<'idle' | 'research' | 'generate'>('idle')
   const [isResetting, setIsResetting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [resetSuccess, setResetSuccess] = useState<string | null>(null)
   const [generateSuccess, setGenerateSuccess] = useState<string | null>(null)
+
+  const isPipelineBusy = pipelinePhase !== 'idle'
+  const isBusy = loading || generating || isPipelineBusy
 
   const loadLatestRun = async () => {
     try {
@@ -61,13 +68,21 @@ export function ResearchTab() {
     }
   }
 
+  const handleDraftCountChange = (value: string) => {
+    const parsed = Number.parseInt(value, 10)
+    if (Number.isNaN(parsed)) {
+      return
+    }
+    setDraftCount(saveDraftGenerationCount(parsed))
+  }
+
   const handleGenerateDrafts = async () => {
     setGenerating(true)
     setError(null)
     setGenerateSuccess(null)
 
     try {
-      const drafts = await generateDraftsFromLatestResearch(DEFAULT_DRAFT_GENERATION_COUNT)
+      const drafts = await generateDraftsFromLatestResearch(draftCount)
       setGenerateSuccess(
         `Generated ${drafts.length} draft(s) with insight-focused prompts. Open the Posts tab to review.`
       )
@@ -76,6 +91,35 @@ export function ResearchTab() {
       setError(errorMessage(generateError, 'Draft generation failed.'))
     } finally {
       setGenerating(false)
+    }
+  }
+
+  const handleResearchAndGenerate = async () => {
+    setError(null)
+    setGenerateSuccess(null)
+    let phase: 'research' | 'generate' = 'research'
+    setPipelinePhase('research')
+
+    try {
+      const newRun = await runResearch('both')
+      setCurrentRun(newRun)
+      setActiveSubTab('current')
+
+      phase = 'generate'
+      setPipelinePhase('generate')
+      const drafts = await generateDraftsFromLatestResearch(draftCount)
+      setGenerateSuccess(
+        `Researched ${newRun.sources.length} source(s) and generated ${drafts.length} draft(s). Open the Posts tab to review.`
+      )
+    } catch (pipelineError: unknown) {
+      console.error(pipelineError)
+      const fallback =
+        phase === 'generate'
+          ? 'Draft generation failed after research completed.'
+          : 'Research and generate failed. Check your xAI API key and connection.'
+      setError(errorMessage(pipelineError, fallback))
+    } finally {
+      setPipelinePhase('idle')
     }
   }
 
@@ -218,59 +262,106 @@ export function ResearchTab() {
 
       {activeSubTab === 'current' && (
         <div>
-          <div className="flex flex-wrap gap-3 mb-6">
-            <button
-              type="button"
-              className="btn btn-sm btn-primary"
-              onClick={() => void handleRunResearch('rss')}
-              disabled={loading}
-            >
-              Run RSS Only
-            </button>
+          <div className="card bg-base-200/60 mb-4">
+            <div className="card-body py-4 gap-4">
+              <div className="flex flex-wrap items-end justify-between gap-4">
+                <label className="form-control w-full max-w-xs">
+                  <div className="label py-0 pb-1">
+                    <span className="label-text font-medium">Posts to generate</span>
+                    <span className="label-text-alt opacity-70">
+                      {MIN_DRAFT_GENERATION_COUNT}–{MAX_DRAFT_GENERATION_COUNT}
+                    </span>
+                  </div>
+                  <input
+                    type="number"
+                    className="input input-bordered input-sm w-full"
+                    min={MIN_DRAFT_GENERATION_COUNT}
+                    max={MAX_DRAFT_GENERATION_COUNT}
+                    value={draftCount}
+                    onChange={(event) => handleDraftCountChange(event.target.value)}
+                    disabled={isBusy}
+                    data-testid="draft-generation-count"
+                  />
+                </label>
 
-            <button
-              type="button"
-              className="btn btn-sm btn-secondary"
-              onClick={() => void handleRunResearch('x')}
-              disabled={loading || !hasXaiKey}
-              title={!hasXaiKey ? 'xAI key required for Grok X research' : ''}
-            >
-              Run X Only (Grok)
-            </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => void handleResearchAndGenerate()}
+                  disabled={isBusy || !hasXaiKey}
+                  title={!hasXaiKey ? 'xAI key required for research and draft generation' : ''}
+                  data-testid="research-and-generate"
+                >
+                  {isPipelineBusy
+                    ? pipelinePhase === 'research'
+                      ? 'Researching…'
+                      : 'Generating posts…'
+                    : 'Research & Generate Posts'}
+                </button>
+              </div>
 
-            <button
-              type="button"
-              className="btn btn-sm btn-accent"
-              onClick={() => void handleRunResearch('both')}
-              disabled={loading || !hasXaiKey}
-              title={!hasXaiKey ? 'xAI key required for Grok X research' : ''}
-            >
-              Run Both
-            </button>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline"
+                  onClick={() => void handleRunResearch('rss')}
+                  disabled={isBusy}
+                >
+                  Run RSS Only
+                </button>
 
-            <button
-              type="button"
-              className="btn btn-sm btn-warning"
-              onClick={() => void handleGenerateDrafts()}
-              disabled={generating || loading || !hasXaiKey || !currentRun}
-              title={
-                !hasXaiKey
-                  ? 'xAI key required'
-                  : !currentRun
-                    ? 'Run research first'
-                    : 'Generate draft posts from latest research (fresh takes)'
-              }
-            >
-              {generating ? 'Generating drafts…' : 'Generate Drafts → Queue'}
-            </button>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline"
+                  onClick={() => void handleRunResearch('x')}
+                  disabled={isBusy || !hasXaiKey}
+                  title={!hasXaiKey ? 'xAI key required for Grok X research' : ''}
+                >
+                  Run X Only (Grok)
+                </button>
+
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline"
+                  onClick={() => void handleRunResearch('both')}
+                  disabled={isBusy || !hasXaiKey}
+                  title={!hasXaiKey ? 'xAI key required for Grok X research' : ''}
+                >
+                  Run Both
+                </button>
+
+                <button
+                  type="button"
+                  className="btn btn-sm btn-warning"
+                  onClick={() => void handleGenerateDrafts()}
+                  disabled={isBusy || !hasXaiKey || !currentRun}
+                  title={
+                    !hasXaiKey
+                      ? 'xAI key required'
+                      : !currentRun
+                        ? 'Run research first'
+                        : `Generate ${draftCount} draft post(s) from latest research`
+                  }
+                  data-testid="generate-drafts"
+                >
+                  {generating ? 'Generating drafts…' : 'Generate Drafts → Queue'}
+                </button>
+              </div>
+            </div>
           </div>
 
-          {loading && (
+          {(loading || isPipelineBusy) && (
             <div className="flex flex-col items-center justify-center py-6 mb-4 bg-base-200 rounded-box">
               <span className="loading loading-spinner loading-lg text-primary" />
-              <p className="mt-3 font-medium">Researching sources…</p>
+              <p className="mt-3 font-medium">
+                {pipelinePhase === 'generate' || generating
+                  ? `Generating ${draftCount} draft post(s)…`
+                  : 'Researching sources…'}
+              </p>
               <p className="text-xs opacity-60 mt-1">
-                Querying RSS + Grok for high-signal Musk company updates
+                {pipelinePhase === 'generate' || generating
+                  ? 'Writing insight-focused posts from the latest research run'
+                  : 'Querying RSS + Grok for high-signal Musk company updates'}
               </p>
             </div>
           )}
