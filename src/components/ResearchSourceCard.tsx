@@ -1,33 +1,66 @@
 import { RESEARCH_SOURCE_TYPE } from '../lib/constants'
 
-interface ResearchSourceCardProps {
+export interface ResearchSourceCardProps {
+  sourceId: string
   title: string
   content: string
   url: string
   sourceName: string
   sourceType: string
   dateLabel: string
+  canGenerate?: boolean
+  generating?: boolean
+  onGeneratePost?: (sourceId: string) => void
 }
 
 export function ResearchSourceCard({
+  sourceId,
   title,
   content,
   url,
   sourceName,
   sourceType,
   dateLabel,
+  canGenerate = false,
+  generating = false,
+  onGeneratePost,
 }: ResearchSourceCardProps) {
+  const displaySourceName =
+    sourceType === RESEARCH_SOURCE_TYPE.rss
+      ? `source: ${sourceName.replace(/^@/, '')}`
+      : sourceName.startsWith('@')
+        ? sourceName
+        : `@${sourceName.replace(/^@/, '')}`
+
+  const handleGenerate = () => {
+    onGeneratePost?.(sourceId)
+  }
+
   return (
-    <div className="card bg-base-100 shadow-sm">
+    <div
+      className={`card bg-base-100 shadow-sm ${canGenerate ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}
+      onClick={canGenerate && !generating ? handleGenerate : undefined}
+      onKeyDown={(event) => {
+        if (!canGenerate || generating || !onGeneratePost) return
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          handleGenerate()
+        }
+      }}
+      role={canGenerate ? 'button' : undefined}
+      tabIndex={canGenerate ? 0 : undefined}
+      data-testid={`research-source-card-${sourceId}`}
+    >
       <div className="card-body py-3">
-        <div className="flex justify-between items-start">
-          <div>
+        <div className="flex justify-between items-start gap-3">
+          <div className="min-w-0 flex-1">
             {url ? (
               <a
                 href={url}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="font-medium hover:underline text-sm"
+                onClick={(event) => event.stopPropagation()}
               >
                 {title}
               </a>
@@ -35,20 +68,34 @@ export function ResearchSourceCard({
               <span className="font-medium text-sm">{title}</span>
             )}
             <div className="text-xs opacity-60 mt-0.5">
-              {sourceType === RESEARCH_SOURCE_TYPE.rss
-                ? `source: ${sourceName.replace(/^@/, '')}`
-                : sourceName.startsWith('@')
-                  ? sourceName
-                  : `@${sourceName.replace(/^@/, '')}`}{' '}
-              • {dateLabel}
+              {displaySourceName} • {dateLabel}
             </div>
           </div>
-          <div className="badge badge-outline badge-sm">{sourceType}</div>
+          <div className="badge badge-outline badge-sm shrink-0">{sourceType}</div>
         </div>
+
         <p className="text-sm line-clamp-2 opacity-80 mt-1">{content}</p>
+
         {sourceType === RESEARCH_SOURCE_TYPE.xGrok && (
           <div className="text-[10px] text-emerald-600 font-medium mt-1">
             ★ Grok-curated high-signal post
+          </div>
+        )}
+
+        {canGenerate && (
+          <div className="card-actions justify-end mt-2">
+            <button
+              type="button"
+              className="btn btn-primary btn-xs"
+              onClick={(event) => {
+                event.stopPropagation()
+                handleGenerate()
+              }}
+              disabled={generating}
+              data-testid={`generate-post-${sourceId}`}
+            >
+              {generating ? 'Generating…' : 'Generate Post'}
+            </button>
           </div>
         )}
       </div>

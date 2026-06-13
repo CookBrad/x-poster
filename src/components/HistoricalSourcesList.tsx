@@ -5,11 +5,19 @@ import { formatResearchSourceDate, ResearchSourceCard } from './ResearchSourceCa
 
 interface HistoricalSourcesListProps {
   reloadToken: number
+  hasXaiKey?: boolean
+  generatingSourceId?: string | null
+  onGenerateFromSource?: (sourceId: string) => void
 }
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const
 
-export function HistoricalSourcesList({ reloadToken }: HistoricalSourcesListProps) {
+export function HistoricalSourcesList({
+  reloadToken,
+  hasXaiKey = false,
+  generatingSourceId = null,
+  onGenerateFromSource,
+}: HistoricalSourcesListProps) {
   const [allSources, setAllSources] = useState<HistoricalResearchSource[]>([])
   const [searchTerm, setSearchTerm] = useState('')
   const [pageSize, setPageSize] = useState(25)
@@ -166,12 +174,16 @@ export function HistoricalSourcesList({ reloadToken }: HistoricalSourcesListProp
           {paginatedSources.map((source) => (
             <ResearchSourceCard
               key={source.id}
+              sourceId={source.id}
               title={source.title}
               content={source.content}
               url={source.url}
               sourceName={source.source_name}
               sourceType={source.source_type}
               dateLabel={formatResearchSourceDate(source.published_at, source.run_at)}
+              canGenerate={hasXaiKey}
+              generating={generatingSourceId === source.id}
+              onGeneratePost={onGenerateFromSource}
             />
           ))}
         </div>

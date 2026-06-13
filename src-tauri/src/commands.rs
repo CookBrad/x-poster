@@ -989,6 +989,45 @@ pub async fn generate_drafts_from_latest_research(
     .await
 }
 
+async fn fetch_research_source_by_id(
+    db: &SqlitePool,
+    source_id: &str,
+) -> Result<research::ResearchSource, String> {
+    sqlx::query_as("SELECT * FROM research_sources WHERE id = ?")
+        .bind(source_id)
+        .fetch_optional(db)
+        .await
+        .map_err(|e| format!("Failed to fetch research source: {}", e))?
+        .ok_or_else(|| format!("Research source '{}' not found.", source_id))
+}
+
+#[tauri::command]
+pub async fn generate_draft_from_source(
+    state: State<'_, AppState>,
+    source_id: String,
+    count: Option<u32>,
+) -> Result<Vec<Draft>, String> {
+    let count = count.unwrap_or(1).clamp(1, MAX_DRAFT_COUNT);
+    let source = fetch_research_source_by_id(&state.db, &source_id).await?;
+    let xai_key = require_xai_api_key(&state.db).await?;
+    let (_, grok_model) = load_grok_settings(&state.db).await?;
+
+    log::info!(
+        "generate_draft_from_source: source_id={}, count={}",
+        source_id,
+        count
+    );
+
+    generation::generate_drafts_from_sources_db(
+        &state.db,
+        std::slice::from_ref(&source),
+        &xai_key,
+        &grok_model,
+        count,
+    )
+    .await
+}
+
 // ============================================
 // X posting (T-007)
 // ============================================

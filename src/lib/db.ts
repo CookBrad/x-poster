@@ -147,6 +147,13 @@ export async function generateDraftsFromLatestResearch(
   return invoke<Draft[]>('generate_drafts_from_latest_research', { count });
 }
 
+export async function generateDraftFromSource(
+  sourceId: string,
+  count = 1
+): Promise<Draft[]> {
+  return invoke<Draft[]>('generate_draft_from_source', { sourceId, count });
+}
+
 export async function postDraftToX(id: string): Promise<Draft> {
   return invoke<Draft>('post_draft_to_x', { id });
 }

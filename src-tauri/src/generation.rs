@@ -383,6 +383,10 @@ fn pick_sources_for_draft(
     item: &GeneratedDraftItem,
     all_sources: &[ResearchSource],
 ) -> Vec<ResearchSource> {
+    if all_sources.len() == 1 {
+        return vec![all_sources[0].clone()];
+    }
+
     if let Some(idx) = item.primary_source_index {
         let i = idx as usize;
         if i >= 1 && i <= all_sources.len() {
@@ -459,6 +463,34 @@ pub async fn generate_drafts_from_sources_db(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_pick_sources_for_draft_uses_only_source_when_singleton() {
+        let sources = vec![ResearchSource {
+            id: "1".into(),
+            title: "Robotaxi".into(),
+            content: "Expanded".into(),
+            url: "https://example.com".into(),
+            published_at: None,
+            source_name: "Teslarati".into(),
+            source_type: "rss".into(),
+            retweet_count: None,
+            like_count: None,
+            reply_count: None,
+            quote_count: None,
+            original_id: None,
+            media_url: None,
+        }];
+        let item = GeneratedDraftItem {
+            text: "Unrelated draft with no index".into(),
+            rationale: None,
+            primary_author: None,
+            primary_source_index: Some(99),
+        };
+        let picked = pick_sources_for_draft(&item, &sources);
+        assert_eq!(picked.len(), 1);
+        assert_eq!(picked[0].id, "1");
+    }
 
     #[test]
     fn test_parse_generated_drafts_json() {

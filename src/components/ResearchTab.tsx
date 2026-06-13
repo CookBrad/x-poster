@@ -8,6 +8,7 @@ import {
   type ResearchMode,
 } from '../lib/constants'
 import {
+  generateDraftFromSource,
   generateDraftsFromLatestResearch,
   getAllHistoricalSources,
   getLatestResearchRun,
@@ -37,6 +38,7 @@ export function ResearchTab() {
   const [researchMode, setResearchMode] = useState<ResearchMode>(RESEARCH_MODE.both)
   const [loading, setLoading] = useState(false)
   const [generating, setGenerating] = useState(false)
+  const [generatingSourceId, setGeneratingSourceId] = useState<string | null>(null)
   const [pipelinePhase, setPipelinePhase] = useState<'idle' | 'research' | 'generate'>('idle')
   const [isResetting, setIsResetting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -44,7 +46,7 @@ export function ResearchTab() {
   const [generateSuccess, setGenerateSuccess] = useState<string | null>(null)
 
   const isPipelineBusy = pipelinePhase !== 'idle'
-  const isBusy = loading || generating || isPipelineBusy
+  const isBusy = loading || generating || isPipelineBusy || generatingSourceId !== null
 
   const loadLatestRun = async () => {
     try {
@@ -80,6 +82,24 @@ export function ResearchTab() {
       return
     }
     setDraftCount(saveDraftGenerationCount(parsed))
+  }
+
+  const handleGenerateFromSource = async (sourceId: string) => {
+    setGeneratingSourceId(sourceId)
+    setError(null)
+    setGenerateSuccess(null)
+
+    try {
+      const drafts = await generateDraftFromSource(sourceId)
+      setGenerateSuccess(
+        `Generated ${drafts.length} post(s) from that story. Open the Posts tab to review.`
+      )
+    } catch (generateError: unknown) {
+      console.error(generateError)
+      setError(errorMessage(generateError, 'Failed to generate post from this story.'))
+    } finally {
+      setGeneratingSourceId(null)
+    }
   }
 
   const handleGenerateDrafts = async () => {
@@ -428,6 +448,7 @@ export function ResearchTab() {
                 {currentRun.sources.map((source) => (
                   <ResearchSourceCard
                     key={source.id}
+                    sourceId={source.id}
                     title={source.title}
                     content={source.content}
                     url={source.url}
@@ -437,6 +458,9 @@ export function ResearchTab() {
                       source.published_at,
                       currentRun.run.run_at
                     )}
+                    canGenerate={hasXaiKey}
+                    generating={generatingSourceId === source.id}
+                    onGeneratePost={(sourceId) => void handleGenerateFromSource(sourceId)}
                   />
                 ))}
               </div>
@@ -454,7 +478,12 @@ export function ResearchTab() {
       )}
 
       {activeSubTab === 'historical' && (
-        <HistoricalSourcesList reloadToken={historicalResetKey} />
+        <HistoricalSourcesList
+          reloadToken={historicalResetKey}
+          hasXaiKey={hasXaiKey}
+          generatingSourceId={generatingSourceId}
+          onGenerateFromSource={(sourceId) => void handleGenerateFromSource(sourceId)}
+        />
       )}
     </div>
   )
