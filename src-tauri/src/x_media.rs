@@ -33,30 +33,96 @@ pub fn normalize_source_mentions(text: &str, sources: &[ResearchSource]) -> Stri
     result
 }
 
-pub fn primary_x_source<'a>(text: &str, sources: &'a [ResearchSource]) -> Option<&'a ResearchSource> {
-    let x_sources: Vec<&ResearchSource> = sources
-        .iter()
-        .filter(|s| s.source_type == "x_grok" || s.source_type == "x")
-        .collect();
+fn significant_tokens(text: &str) -> Vec<String> {
+    text.split_whitespace()
+        .map(|w| {
+            w.trim_matches(|c: char| !c.is_alphanumeric() && c != '$' && c != '.')
+                .to_lowercase()
+        })
+        .filter(|w| w.len() >= 4)
+        .collect()
+}
 
-    if x_sources.is_empty() {
-        return None;
-    }
-
-    let text_lower = text.to_lowercase();
-    for source in &x_sources {
-        if let Some(author) = author_handle(source) {
-            let author_lower = author.to_lowercase();
-            if text_lower.contains(&format!("@{}", author_lower))
-                || text_lower.contains(&format!("({})", author_lower))
-                || text_lower.contains(&author_lower)
-            {
-                return Some(source);
+fn extract_distinctive_tokens(text: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let lower = text.to_lowercase();
+    for word in lower.split_whitespace() {
+        let cleaned: String = word
+            .chars()
+            .filter(|c| c.is_alphanumeric() || *c == '$' || *c == '.')
+            .collect();
+        if cleaned.contains('$')
+            || cleaned.chars().any(|c| c.is_ascii_digit())
+            || (cleaned.len() >= 6 && !["tesla", "spacex", "musk", "grok"].contains(&cleaned.as_str()))
+        {
+            if cleaned.len() >= 3 {
+                tokens.push(cleaned);
             }
         }
     }
+    tokens
+}
 
-    x_sources.into_iter().next()
+pub fn source_match_score(text: &str, source: &ResearchSource) -> usize {
+    let text_lower = text.to_lowercase();
+    let haystack = format!(
+        "{} {}",
+        source.title.to_lowercase(),
+        source.content.chars().take(400).collect::<String>().to_lowercase()
+    );
+
+    let mut score = 0usize;
+
+    if let Some(author) = author_handle(source) {
+        let author_lower = author.to_lowercase();
+        if text_lower.contains(&format!("@{}", author_lower)) {
+            score += 3;
+        }
+        if text_lower.contains(&format!("({})", author_lower)) {
+            score += 3;
+        }
+    }
+
+    for token in significant_tokens(&text_lower) {
+        if haystack.contains(&token) {
+            score += 2;
+        }
+    }
+
+    for token in extract_distinctive_tokens(&text_lower) {
+        if haystack.contains(&token) {
+            score += 5;
+        }
+    }
+
+    score
+}
+
+/// Pick the single research source that best matches this draft's text.
+pub fn match_primary_source<'a>(
+    text: &str,
+    sources: &'a [ResearchSource],
+) -> Option<&'a ResearchSource> {
+    if sources.is_empty() {
+        return None;
+    }
+    if sources.len() == 1 {
+        return Some(&sources[0]);
+    }
+
+    let mut best: Option<(&ResearchSource, usize)> = None;
+    for source in sources {
+        let score = source_match_score(text, source);
+        if score == 0 {
+            continue;
+        }
+        match best {
+            Some((_, best_score)) if score <= best_score => {}
+            _ => best = Some((source, score)),
+        }
+    }
+
+    best.map(|(s, _)| s)
 }
 
 pub async fn download_image(url: &str) -> Result<Vec<u8>, String> {
@@ -305,14 +371,45 @@ mod tests {
         assert!(!out.contains("(SawyerMerritt)"));
     }
 
+    fn mut_source(author: &str, title: &str, content: &str, url: &str) -> ResearchSource {
+        ResearchSource {
+            title: title.into(),
+            content: content.into(),
+            url: url.into(),
+            original_id: extract_tweet_id_from_url(url),
+            ..x_source(author, url)
+        }
+    }
+
     #[test]
-    fn test_primary_x_source_matches_author_in_text() {
+    fn test_match_primary_source_picks_by_content_not_first() {
         let sources = vec![
-            x_source("WholeMarsBlog", "https://x.com/WholeMarsBlog/status/1"),
-            x_source("SawyerMerritt", "https://x.com/SawyerMerritt/status/2"),
+            mut_source(
+                "SawyerMerritt",
+                "Cybercabs in Houston",
+                "Tons of Tesla Cybercabs spotted in Houston Texas",
+                "https://x.com/SawyerMerritt/status/111",
+            ),
+            mut_source(
+                "SawyerMerritt",
+                "Maui $26.5M home",
+                "A home in Maui sold for $26.5 million with a $1.4M Tesla Solar Tile Roof",
+                "https://x.com/SawyerMerritt/status/222",
+            ),
         ];
-        let text = "Maui home sale (SawyerMerritt) validates solar tiles.";
-        let primary = primary_x_source(text, &sources).unwrap();
+        let text =
+            "Maui's $26.5M home sale with a $1.4M Tesla Solar Tile roof (@SawyerMerritt) signals premium solar adoption.";
+        let primary = match_primary_source(text, &sources).unwrap();
+        assert_eq!(
+            primary.url,
+            "https://x.com/SawyerMerritt/status/222"
+        );
+    }
+
+    #[test]
+    fn test_single_source_array_returns_that_source() {
+        let sources = vec![x_source("SawyerMerritt", "https://x.com/SawyerMerritt/status/1")];
+        let primary = match_primary_source("unrelated text", &sources).unwrap();
         assert_eq!(author_handle(primary), Some("SawyerMerritt".to_string()));
     }
 }

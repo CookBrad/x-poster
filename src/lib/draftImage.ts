@@ -7,47 +7,92 @@ type SourceLike = {
   media_url?: string | null
   url?: string
   title?: string
+  content?: string
 }
 
-/** Immediate client-side preview from stored source metadata (no network). */
+function significantTokens(text: string): string[] {
+  return text
+    .toLowerCase()
+    .split(/\s+/)
+    .map((w) => w.replace(/^[^a-z0-9$]+|[^a-z0-9$.]+$/gi, ''))
+    .filter((w) => w.length >= 4)
+}
+
+function distinctiveTokens(text: string): string[] {
+  return text
+    .toLowerCase()
+    .split(/\s+/)
+    .map((w) => w.replace(/[^a-z0-9$.]/g, ''))
+    .filter(
+      (w) =>
+        w.length >= 3 &&
+        (w.includes('$') ||
+          /\d/.test(w) ||
+          (w.length >= 6 && !['tesla', 'spacex', 'musk', 'grok'].includes(w)))
+    )
+}
+
+function sourceMatchScore(text: string, source: SourceLike): number {
+  const textLower = text.toLowerCase()
+  const haystack = `${source.title ?? ''} ${(source.content ?? '').slice(0, 400)}`.toLowerCase()
+  let score = 0
+
+  const author = source.source_name?.trim().replace(/^@/, '') ?? ''
+  if (author) {
+    if (textLower.includes(`@${author.toLowerCase()}`)) score += 3
+    if (textLower.includes(`(${author.toLowerCase()})`)) score += 3
+  }
+
+  for (const token of significantTokens(textLower)) {
+    if (haystack.includes(token)) score += 2
+  }
+  for (const token of distinctiveTokens(textLower)) {
+    if (haystack.includes(token)) score += 5
+  }
+
+  return score
+}
+
+/** Pick the research source that best matches this draft (mirrors backend logic). */
+export function matchPrimarySource(text: string, sources: SourceLike[]): SourceLike | null {
+  if (sources.length === 0) return null
+  if (sources.length === 1) return sources[0] ?? null
+
+  let best: { source: SourceLike; score: number } | null = null
+  for (const source of sources) {
+    const score = sourceMatchScore(text, source)
+    if (score === 0) continue
+    if (!best || score > best.score) {
+      best = { source, score }
+    }
+  }
+  return best?.source ?? null
+}
+
+/** Immediate client-side preview from the draft's matched source only. */
 export function getDraftDisplayImage(draft: Draft): string | null {
-  if (draft.image_url?.trim()) {
+  const sources = parseSources(draft) as SourceLike[]
+  const primary = matchPrimarySource(draft.text, sources)
+  const media = primary?.media_url?.trim()
+  if (media) return media
+
+  // Only use top-level image_url when this draft has a single linked source.
+  if (sources.length <= 1 && draft.image_url?.trim()) {
     return draft.image_url.trim()
   }
 
-  const sources = parseSources(draft) as SourceLike[]
-  const primary = primaryXSource(draft.text, sources)
-  const media = primary?.media_url?.trim()
-  return media || null
+  return null
 }
 
-function primaryXSource(text: string, sources: SourceLike[]): SourceLike | null {
-  const xSources = sources.filter(
-    (s) => s.source_type === 'x_grok' || s.source_type === 'x'
-  )
-  if (xSources.length === 0) return null
-
-  const textLower = text.toLowerCase()
-  for (const source of xSources) {
-    const author = source.source_name?.trim().replace(/^@/, '') ?? ''
-    if (!author) continue
-    const authorLower = author.toLowerCase()
-    if (
-      textLower.includes(`@${authorLower}`) ||
-      textLower.includes(`(${authorLower})`) ||
-      textLower.includes(authorLower)
-    ) {
-      return source
-    }
-  }
-
-  return xSources[0] ?? null
-}
-
-/** Fetch and persist image URL from X/source when missing (uses X credentials if set). */
+/** Fetch and persist the image for this draft's matched source (not a shared default). */
 export async function resolveDraftImage(draft: Draft): Promise<Draft> {
-  if (getDraftDisplayImage(draft)) {
+  const sources = parseSources(draft) as SourceLike[]
+  const hasCached = Boolean(draft.image_url?.trim())
+  const legacyMultiSource = sources.length > 1
+
+  if (hasCached && !legacyMultiSource && getDraftDisplayImage(draft)) {
     return draft
   }
+
   return invoke<Draft>('resolve_draft_image', { id: draft.id })
 }

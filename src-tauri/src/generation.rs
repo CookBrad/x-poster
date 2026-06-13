@@ -10,6 +10,7 @@ pub struct GeneratedDraftItem {
     pub text: String,
     pub rationale: Option<String>,
     pub primary_author: Option<String>,
+    pub primary_source_index: Option<u32>,
 }
 
 /// Build system prompt enforcing fresh-take + inline attribution (T-005 / T-015).
@@ -31,8 +32,11 @@ Return ONLY a JSON array (no markdown fences), each object:
 {
   "text": "the tweet/post text",
   "rationale": "1 sentence on what fresh angle you added",
-  "primary_author": "username without @ for the main X source this draft draws from, or null for RSS-only"
-}"#
+  "primary_author": "username without @ for the main source this draft draws from, or null for RSS-only",
+  "primary_source_index": 3
+}
+
+`primary_source_index` is REQUIRED: the 1-based number from the Sources list above that this draft mainly draws from. Each draft must use a different index when possible."#
 }
 
 pub fn build_generation_user_prompt(
@@ -107,6 +111,10 @@ pub fn parse_generated_drafts(content: &str) -> Result<Vec<GeneratedDraftItem>, 
                 .as_str()
                 .map(|s| s.trim().trim_start_matches('@').to_string())
                 .filter(|s| !s.is_empty()),
+            primary_source_index: v["primary_source_index"]
+                .as_u64()
+                .map(|n| n as u32)
+                .or_else(|| v["primary_source_index"].as_str().and_then(|s| s.parse().ok())),
         });
     }
 
@@ -167,6 +175,44 @@ pub async fn call_grok_for_drafts(
     parse_generated_drafts(content)
 }
 
+fn pick_sources_for_draft(
+    item: &GeneratedDraftItem,
+    all_sources: &[ResearchSource],
+) -> Vec<ResearchSource> {
+    if let Some(idx) = item.primary_source_index {
+        let i = idx as usize;
+        if i >= 1 && i <= all_sources.len() {
+            return vec![all_sources[i - 1].clone()];
+        }
+    }
+
+    if let Some(matched) = crate::x_media::match_primary_source(&item.text, all_sources) {
+        return vec![matched.clone()];
+    }
+
+    if let Some(author) = &item.primary_author {
+        let narrowed: Vec<ResearchSource> = all_sources
+            .iter()
+            .filter(|s| {
+                s.source_name
+                    .trim_start_matches('@')
+                    .eq_ignore_ascii_case(author)
+            })
+            .cloned()
+            .collect();
+        if !narrowed.is_empty() {
+            if let Some(matched) = crate::x_media::match_primary_source(&item.text, &narrowed) {
+                return vec![matched.clone()];
+            }
+            if narrowed.len() == 1 {
+                return narrowed;
+            }
+        }
+    }
+
+    vec![]
+}
+
 pub async fn generate_drafts_from_sources_db(
     db: &SqlitePool,
     sources: &[ResearchSource],
@@ -183,26 +229,19 @@ pub async fn generate_drafts_from_sources_db(
 
     let generated = call_grok_for_drafts(xai_api_key, model, sources, &recent_texts, count).await?;
 
-    let sources_json = serde_json::to_string(sources).map_err(|e| e.to_string())?;
-
     let mut drafts = Vec::new();
     for item in generated {
-        let text = crate::x_media::normalize_source_mentions(&item.text, sources);
-        let image_url = item
-            .primary_author
-            .as_ref()
-            .and_then(|author| {
-                sources.iter().find(|s| {
-                    s.source_name
-                        .trim_start_matches('@')
-                        .eq_ignore_ascii_case(author)
-                })
-            })
-            .and_then(|s| s.media_url.clone());
+        let draft_sources = pick_sources_for_draft(&item, sources);
+        let text = crate::x_media::normalize_source_mentions(&item.text, &draft_sources);
+        let primary = crate::x_media::match_primary_source(&text, &draft_sources);
+        let image_url = primary.and_then(|s| s.media_url.clone());
+
+        let sources_json =
+            serde_json::to_string(&draft_sources).map_err(|e| e.to_string())?;
 
         let input = CreateDraftInput {
             text,
-            sources_json: sources_json.clone(),
+            sources_json,
             image_url,
         };
         let draft = create_draft_db(db, input).await?;

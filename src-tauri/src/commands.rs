@@ -893,19 +893,23 @@ pub async fn resolve_draft_image_db(db: &SqlitePool, id: String) -> Result<Draft
         .await?
         .ok_or("Draft not found".to_string())?;
 
-    if draft
-        .image_url
-        .as_ref()
-        .map(|s| !s.is_empty())
-        .unwrap_or(false)
-    {
-        return Ok(draft);
-    }
-
     let sources: Vec<research::ResearchSource> =
         serde_json::from_str(&draft.sources_json).unwrap_or_default();
     let text = x_media::normalize_source_mentions(&draft.text, &sources);
-    let primary = x_media::primary_x_source(&text, &sources);
+    let primary = x_media::match_primary_source(&text, &sources);
+
+    // Legacy drafts stored every research source — re-resolve image per draft.
+    let legacy_multi_source = sources.len() > 1;
+    if !legacy_multi_source {
+        if draft
+            .image_url
+            .as_ref()
+            .map(|s| !s.is_empty())
+            .unwrap_or(false)
+        {
+            return Ok(draft);
+        }
+    }
 
     let creds = load_x_credentials_db(db).await.ok();
     let preview = x_media::resolve_preview_image_url(
@@ -952,9 +956,9 @@ pub async fn post_draft_to_x(state: State<'_, AppState>, id: String) -> Result<D
     let sources: Vec<research::ResearchSource> =
         serde_json::from_str(&draft.sources_json).unwrap_or_default();
     let text = x_media::normalize_source_mentions(&draft.text, &sources);
-    let primary = x_media::primary_x_source(&text, &sources);
+    let primary = x_media::match_primary_source(&text, &sources);
 
-    if draft.image_url.as_ref().map(|s| s.is_empty()).unwrap_or(true) {
+    if draft.image_url.as_ref().map(|s| s.is_empty()).unwrap_or(true) || sources.len() > 1 {
         if let Ok(Some(preview_url)) =
             x_media::resolve_preview_image_url(Some(&creds), None, primary).await
         {
