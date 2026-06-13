@@ -85,27 +85,23 @@ export function matchPrimarySource(text: string, sources: SourceLike[]): SourceL
   return best?.source ?? null
 }
 
-/** Immediate client-side preview from the draft's matched source only. */
+/** Immediate client-side preview: resolved image first, then matched source media. */
 export function getDraftDisplayImage(draft: Draft): string | null {
+  if (draft.image_url?.trim()) {
+    return getDisplayableImageUrl(draft.image_url)
+  }
+
   const sources = parseSources(draft) as SourceLike[]
   const primary = matchPrimarySource(draft.text, sources)
   const media = primary?.media_url?.trim()
   if (media) return media
 
-  if (draft.image_url?.trim()) {
-    return getDisplayableImageUrl(draft.image_url)
-  }
-
   return null
 }
 
-/** Fetch and persist the image for this draft's matched source (not a shared default). */
+/** Resolve and persist the best image for this draft via the backend fallback chain. */
 export async function resolveDraftImage(draft: Draft): Promise<Draft> {
-  const sources = parseSources(draft) as SourceLike[]
-  const hasCached = Boolean(draft.image_url?.trim())
-  const legacyMultiSource = sources.length > 1
-
-  if (hasCached && !legacyMultiSource && getDraftDisplayImage(draft)) {
+  if (draft.image_url?.trim()) {
     return draft
   }
 

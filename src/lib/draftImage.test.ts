@@ -35,6 +35,14 @@ describe('getDraftDisplayImage', () => {
     expect(getDraftDisplayImage(baseDraft)).toBe('https://pbs.twimg.com/media/example.jpg')
   })
 
+  it('prefers resolved image_url over source media_url', () => {
+    const draft = {
+      ...baseDraft,
+      image_url: 'https://example.com/resolved.jpg',
+    }
+    expect(getDraftDisplayImage(draft)).toBe('https://example.com/resolved.jpg')
+  })
+
   it('picks the matching source when multiple from same author', () => {
     const sources = [
       {

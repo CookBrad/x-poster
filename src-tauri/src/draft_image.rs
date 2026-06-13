@@ -212,16 +212,19 @@ pub fn persist_image_bytes(
 async fn finalize_image_location(
     request: &DraftImageRequest<'_>,
     remote_url: &str,
+    persist_locally: bool,
 ) -> Result<String, String> {
-    if let Some(app_data_dir) = request.app_data_dir {
-        match persist_image_from_url(app_data_dir, request.draft_id, remote_url).await {
-            Ok(local_path) => return Ok(local_path),
-            Err(error) => {
-                log::warn!(
-                    "Could not persist draft image for {}: {} — using remote URL",
-                    request.draft_id,
-                    error
-                );
+    if persist_locally {
+        if let Some(app_data_dir) = request.app_data_dir {
+            match persist_image_from_url(app_data_dir, request.draft_id, remote_url).await {
+                Ok(local_path) => return Ok(local_path),
+                Err(error) => {
+                    log::warn!(
+                        "Could not persist draft image for {}: {} — using remote URL",
+                        request.draft_id,
+                        error
+                    );
+                }
             }
         }
     }
@@ -234,12 +237,7 @@ pub async fn resolve_draft_image_url(
     request: DraftImageRequest<'_>,
 ) -> Result<Option<String>, String> {
     if let Some(existing) = request.draft_image_url.filter(|u| !u.is_empty()) {
-        if is_local_image_path(existing) {
-            return Ok(Some(existing.to_string()));
-        }
-        return Ok(Some(
-            finalize_image_location(&request, existing).await?,
-        ));
+        return Ok(Some(existing.to_string()));
     }
 
     if let Some(url) = x_media::resolve_preview_image_url(
@@ -250,7 +248,9 @@ pub async fn resolve_draft_image_url(
     .await?
     {
         log::info!("Resolved draft image from source media for {}", request.draft_id);
-        return Ok(Some(finalize_image_location(&request, &url).await?));
+        return Ok(Some(
+            finalize_image_location(&request, &url, false).await?,
+        ));
     }
 
     if let Some(source) = request.primary_source {
@@ -259,7 +259,9 @@ pub async fn resolve_draft_image_url(
                 "Resolved draft image from article og:image for {}",
                 request.draft_id
             );
-            return Ok(Some(finalize_image_location(&request, &url).await?));
+            return Ok(Some(
+                finalize_image_location(&request, &url, false).await?,
+            ));
         }
     }
 
@@ -270,7 +272,9 @@ pub async fn resolve_draft_image_url(
                 "Generated draft image with Grok for {}",
                 request.draft_id
             );
-            return Ok(Some(finalize_image_location(&request, &url).await?));
+            return Ok(Some(
+                finalize_image_location(&request, &url, true).await?,
+            ));
         }
     }
 
