@@ -35,7 +35,12 @@ export function ResearchSourceCard({
               <span className="font-medium text-sm">{title}</span>
             )}
             <div className="text-xs opacity-60 mt-0.5">
-              {sourceName} • {dateLabel}
+              {sourceType === RESEARCH_SOURCE_TYPE.rss
+                ? `source: ${sourceName.replace(/^@/, '')}`
+                : sourceName.startsWith('@')
+                  ? sourceName
+                  : `@${sourceName.replace(/^@/, '')}`}{' '}
+              • {dateLabel}
             </div>
           </div>
           <div className="badge badge-outline badge-sm">{sourceType}</div>

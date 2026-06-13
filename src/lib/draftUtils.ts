@@ -1,5 +1,15 @@
-import { DRAFT_STATUS, SIMULATED_POST_ID_PREFIX, X_STATUS_URL_BASE } from './constants'
+import { DRAFT_STATUS, RESEARCH_SOURCE_TYPE, SIMULATED_POST_ID_PREFIX, X_STATUS_URL_BASE } from './constants'
 import { parseSources, type Draft, type DraftSource } from './db'
+
+function isRssSource(source: DraftSource): boolean {
+  const sourceType = (source.source_type ?? source.type ?? '').toLowerCase()
+  return sourceType === RESEARCH_SOURCE_TYPE.rss
+}
+
+function isXSource(source: DraftSource): boolean {
+  const sourceType = (source.source_type ?? source.type ?? '').toLowerCase()
+  return sourceType === RESEARCH_SOURCE_TYPE.xGrok || sourceType === 'x' || sourceType === 'x_post'
+}
 
 export interface DraftStatusCounts {
   pending: number
@@ -21,7 +31,19 @@ export function countDraftsByStatus(drafts: Draft[]): DraftStatusCounts {
 }
 
 export function formatSourceLabel(source: DraftSource): string | undefined {
-  return source.source_name || source.user || source.source || source.title
+  const rawName = source.source_name || source.user || source.source || source.title
+  if (!rawName) return undefined
+
+  const name = rawName.trim().replace(/^@/, '')
+  if (isRssSource(source)) {
+    return `source: ${name}`
+  }
+
+  if (isXSource(source) || source.user) {
+    return `@${name}`
+  }
+
+  return name
 }
 
 export function formatSourceLabels(draft: Draft): string {

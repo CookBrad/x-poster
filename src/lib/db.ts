@@ -15,6 +15,7 @@ export interface Draft {
 
 export interface DraftSource {
   type?: string
+  source_type?: string
   user?: string
   source?: string
   source_name?: string

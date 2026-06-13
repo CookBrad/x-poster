@@ -12,8 +12,8 @@ const baseDraft: Draft = {
   id: 'draft-1',
   text: 'Hello',
   sources_json: JSON.stringify([
-    { user: '@Tesla', title: 'Ignored when user present' },
-    { source_name: 'Teslarati', title: 'Fallback title' },
+    { source_type: 'x_grok', source_name: '@Tesla', title: 'Ignored when user present' },
+    { source_type: 'rss', source_name: 'Not A Tesla App', title: 'Fallback title' },
   ]),
   image_url: null,
   status: DRAFT_STATUS.pending,
@@ -35,7 +35,7 @@ describe('draftUtils', () => {
   })
 
   it('formats source labels from draft sources', () => {
-    expect(formatSourceLabels(baseDraft)).toBe('@Tesla, Teslarati')
+    expect(formatSourceLabels(baseDraft)).toBe('@Tesla, source: Not A Tesla App')
   })
 
   it('builds X URLs only for real tweet ids', () => {

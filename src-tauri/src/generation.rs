@@ -37,14 +37,16 @@ CRITICAL RULES:
    - Place cashtags naturally (often at the end). Do not spam unrelated tags.
 
 4. INLINE ATTRIBUTION:
-   - When you use a specific fact from a source, attribute it inline with an @ mention (e.g. "As @SawyerMerritt noted..." or "Per @Teslarati...").
+   - X/Twitter sources (x_grok): attribute with an @ mention (e.g. "As @SawyerMerritt noted...").
+   - RSS/news sources: attribute as "source: Publication Name" (e.g. "Per source: Not A Tesla App, ...") — never use @ for RSS publications.
    - Never use parenthetical handles like (SawyerMerritt).
 
 5. Avoid repeating themes from the user's RECENT POSTS list below — find a different angle.
 6. Non-political, company/tech focus only. No partisan takes.
 7. Each post must be under 280 characters (single tweet). Count cashtags toward the limit.
 
-GOOD (Tesla): "Per @Teslarati, Austin Robotaxi geofence widened again — the read-through for $TSLA isn't the headline, it's faster real-world miles accruing toward regulatory confidence on unsupervised FSD."
+GOOD (Tesla/X): "As @SawyerMerritt noted, Austin Robotaxi geofence widened again — the read-through for $TSLA isn't the headline, it's faster real-world miles accruing toward regulatory confidence on unsupervised FSD."
+GOOD (RSS): "Per source: Not A Tesla App, Smart Summon on Cybertruck widens the real-world edge-case pool $TSLA needs before robotaxi scale — the product story is data velocity, not the feature checkbox."
 GOOD (SpaceX): "Starship booster catch success isn't just engineering theater — it changes launch cadence economics and is a real $SPCX catalyst for anyone tracking SpaceX valuation read-through."
 BAD (regurgitation): "Teslarati reports Tesla expanded Robotaxi in Austin." (just repeats the source)
 BAD (no insight): "Tesla is doing great things with FSD!" (empty hype)
@@ -69,13 +71,14 @@ pub fn build_generation_user_prompt(
     let mut source_lines = Vec::new();
     for (i, s) in sources.iter().take(20).enumerate() {
         let excerpt: String = s.content.chars().take(400).collect();
+        let attribution = format_source_attribution(s);
         source_lines.push(format!(
-            "{}. [{}] {} (@{}) — {}\n   URL: {}",
+            "{}. [{}] {} — {}\n   {} | URL: {}",
             i + 1,
             s.source_type,
             s.title,
-            s.source_name.trim_start_matches('@'),
             excerpt,
+            attribution,
             s.url
         ));
     }
@@ -218,8 +221,61 @@ pub fn ensure_stock_tags(text: &str, tags: &[&str]) -> String {
     result
 }
 
+fn is_x_source(source: &ResearchSource) -> bool {
+    matches!(
+        source.source_type.to_lowercase().as_str(),
+        "x" | "x_grok" | "x_post"
+    )
+}
+
+/// How this source should appear in draft attribution text.
+pub fn format_source_attribution(source: &ResearchSource) -> String {
+    let name = source.source_name.trim().trim_start_matches('@');
+    if is_x_source(source) {
+        format!("@{name}")
+    } else {
+        format!("source: {name}")
+    }
+}
+
+/// Replace mistaken @ mentions for RSS publications with "source: Name".
+pub fn normalize_rss_attribution(text: &str, sources: &[ResearchSource]) -> String {
+    let mut result = text.to_string();
+
+    for source in sources {
+        if is_x_source(source) {
+            continue;
+        }
+
+        let name = source.source_name.trim();
+        if name.is_empty() {
+            continue;
+        }
+
+        let attribution = format!("source: {name}");
+        let compact: String = name.chars().filter(|c| c.is_alphanumeric()).collect();
+
+        let mut handles = vec![name.to_string(), compact];
+        handles.retain(|h| !h.is_empty());
+        for prefix in ["Per ", "As ", "From ", ""] {
+            for handle in handles.iter() {
+                let pattern = format!("{prefix}@{handle}");
+                if result.contains(&pattern) {
+                    result = result.replace(&pattern, &format!("{prefix}{attribution}"));
+                }
+                let lower_pattern = format!("{prefix}@{}", handle.to_lowercase());
+                if result.contains(&lower_pattern) {
+                    result = result.replace(&lower_pattern, &format!("{prefix}{attribution}"));
+                }
+            }
+        }
+    }
+
+    result
+}
+
 pub fn finalize_draft_text(text: &str, sources: &[ResearchSource]) -> String {
-    let normalized = text.trim().to_string();
+    let normalized = normalize_rss_attribution(text.trim(), sources);
     let tags = stock_tags_for_draft(&normalized, sources);
     let cleaned = remove_disallowed_cashtags(&normalized, &tags);
     ensure_stock_tags(&cleaned, &tags)
@@ -473,8 +529,56 @@ mod tests {
     }
 
     #[test]
+    fn test_normalize_rss_attribution_replaces_at_mention() {
+        let sources = vec![ResearchSource {
+            id: "1".into(),
+            title: "Deliveries".into(),
+            content: "Beat".into(),
+            url: "https://example.com".into(),
+            published_at: None,
+            source_name: "Teslarati".into(),
+            source_type: "rss".into(),
+            retweet_count: None,
+            like_count: None,
+            reply_count: None,
+            quote_count: None,
+            original_id: None,
+            media_url: None,
+        }];
+        let result = normalize_rss_attribution(
+            "Per @Teslarati, deliveries beat — margin mix is the insight",
+            &sources,
+        );
+        assert!(result.contains("source: Teslarati"));
+        assert!(!result.contains("@Teslarati"));
+    }
+
+    #[test]
+    fn test_format_source_attribution_rss_uses_source_prefix() {
+        let source = ResearchSource {
+            id: "1".into(),
+            title: "Summon".into(),
+            content: "Details".into(),
+            url: "https://example.com".into(),
+            published_at: None,
+            source_name: "Not A Tesla App".into(),
+            source_type: "rss".into(),
+            retweet_count: None,
+            like_count: None,
+            reply_count: None,
+            quote_count: None,
+            original_id: None,
+            media_url: None,
+        };
+        assert_eq!(
+            format_source_attribution(&source),
+            "source: Not A Tesla App".to_string()
+        );
+    }
+
+    #[test]
     fn test_ensure_stock_tags_appends_missing_cashtags() {
-        let text = "As @Teslarati noted, energy attach rates are accelerating";
+        let text = "Per source: Teslarati, energy attach rates are accelerating";
         let result = ensure_stock_tags(text, &[STOCK_TAG_TSLA]);
         assert!(result.ends_with("$TSLA"));
     }
@@ -513,10 +617,33 @@ mod tests {
             media_url: None,
         }];
         let result = finalize_draft_text(
-            "Per @Teslarati, deliveries beat — the insight is energy margin mix, not the headline number",
+            "Per source: Teslarati, deliveries beat — the insight is energy margin mix, not the headline number",
             &sources,
         );
         assert!(result.contains("$TSLA"));
+        assert!(!result.contains("@Teslarati"));
+    }
+
+    #[test]
+    fn test_build_user_prompt_uses_source_prefix_for_rss() {
+        let sources = vec![ResearchSource {
+            id: "1".into(),
+            title: "Robotaxi update".into(),
+            content: "Details here".into(),
+            url: "https://example.com".into(),
+            published_at: None,
+            source_name: "Not A Tesla App".into(),
+            source_type: "rss".into(),
+            retweet_count: None,
+            like_count: None,
+            reply_count: None,
+            quote_count: None,
+            original_id: None,
+            media_url: None,
+        }];
+        let prompt = build_generation_user_prompt(&sources, &[], 1);
+        assert!(prompt.contains("source: Not A Tesla App"));
+        assert!(!prompt.contains("@Not A Tesla App"));
     }
 
     #[test]
