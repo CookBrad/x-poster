@@ -126,6 +126,10 @@ pub fn match_primary_source<'a>(
 }
 
 pub async fn download_image(url: &str) -> Result<Vec<u8>, String> {
+    if crate::draft_image::is_local_image_path(url) {
+        return std::fs::read(url).map_err(|e| format!("Failed to read local image: {}", e));
+    }
+
     let client = Client::builder()
         .timeout(Duration::from_secs(30))
         .build()

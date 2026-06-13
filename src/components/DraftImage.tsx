@@ -58,7 +58,7 @@ export function DraftImage({ draft, className, onResolved }: DraftImageProps) {
   return (
     <img
       src={imageUrl}
-      alt="Source post image"
+      alt="Draft post image"
       className={`mt-2 rounded-lg max-h-48 w-full object-cover ${className ?? ''}`}
       data-testid={`draft-image-${draft.id}`}
       onError={(e) => {

@@ -3,8 +3,9 @@ use crate::{
         draft_status, settings, DEFAULT_DRAFT_COUNT, DEFAULT_GROK_MODEL, MAX_DRAFT_COUNT,
         RESEARCH_SOURCE_LIMIT,
     },
-    generation, research, x_media, x_post, AppState,
+    draft_image, generation, research, x_media, x_post, AppState,
 };
+use std::path::Path;
 use serde::{Deserialize, Serialize};
 use sqlx::sqlite::SqlitePool;
 use tauri::State;
@@ -626,6 +627,7 @@ fn draft_has_stored_image(draft: &Draft) -> bool {
 
 async fn maybe_resolve_preview_image(
     db: &SqlitePool,
+    app_data_dir: &Path,
     draft_id: &str,
     draft: &Draft,
     creds: Option<&x_post::XCredentials>,
@@ -639,7 +641,18 @@ async fn maybe_resolve_preview_image(
     let primary = context
         .primary_index
         .and_then(|index| context.sources.get(index));
-    let preview = x_media::resolve_preview_image_url(creds, None, primary).await?;
+    let xai_key = load_grok_settings(db).await.ok().map(|(key, _)| key);
+
+    let preview = draft_image::resolve_draft_image_url(draft_image::DraftImageRequest {
+        draft_id,
+        draft_text: &context.normalized_text,
+        draft_image_url: draft.image_url.as_deref(),
+        primary_source: primary,
+        x_credentials: creds,
+        xai_api_key: xai_key.as_deref(),
+        app_data_dir: Some(app_data_dir),
+    })
+    .await?;
 
     if let Some(url) = preview {
         update_draft_db(
@@ -1015,10 +1028,14 @@ pub async fn resolve_draft_image(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<Draft, String> {
-    resolve_draft_image_db(&state.db, id).await
+    resolve_draft_image_db(&state.db, &state.app_data_dir, id).await
 }
 
-pub async fn resolve_draft_image_db(db: &SqlitePool, id: String) -> Result<Draft, String> {
+pub async fn resolve_draft_image_db(
+    db: &SqlitePool,
+    app_data_dir: &Path,
+    id: String,
+) -> Result<Draft, String> {
     let draft = get_draft_db(db, id.clone())
         .await?
         .ok_or("Draft not found".to_string())?;
@@ -1032,7 +1049,7 @@ pub async fn resolve_draft_image_db(db: &SqlitePool, id: String) -> Result<Draft
     }
 
     let creds = load_x_credentials_db(db).await.ok();
-    maybe_resolve_preview_image(db, &id, &draft, creds.as_ref(), true).await?;
+    maybe_resolve_preview_image(db, app_data_dir, &id, &draft, creds.as_ref(), true).await?;
 
     get_draft_db(db, id)
         .await?
@@ -1059,6 +1076,7 @@ pub async fn post_draft_to_x(state: State<'_, AppState>, id: String) -> Result<D
 
     maybe_resolve_preview_image(
         &state.db,
+        &state.app_data_dir,
         &id,
         &draft,
         Some(&creds),

@@ -1,5 +1,21 @@
-import { invoke } from '@tauri-apps/api/core'
+import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { parseSources, type Draft } from './db'
+
+function isRemoteImageUrl(url: string): boolean {
+  return url.startsWith('http://') || url.startsWith('https://')
+}
+
+/** Map stored draft image paths (local or remote) to a URL the UI can render. */
+export function getDisplayableImageUrl(url: string | null | undefined): string | null {
+  const trimmed = url?.trim()
+  if (!trimmed) {
+    return null
+  }
+  if (isRemoteImageUrl(trimmed)) {
+    return trimmed
+  }
+  return convertFileSrc(trimmed)
+}
 
 type SourceLike = {
   source_name?: string
@@ -76,9 +92,8 @@ export function getDraftDisplayImage(draft: Draft): string | null {
   const media = primary?.media_url?.trim()
   if (media) return media
 
-  // Only use top-level image_url when this draft has a single linked source.
-  if (sources.length <= 1 && draft.image_url?.trim()) {
-    return draft.image_url.trim()
+  if (draft.image_url?.trim()) {
+    return getDisplayableImageUrl(draft.image_url)
   }
 
   return null

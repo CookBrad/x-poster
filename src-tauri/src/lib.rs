@@ -1,5 +1,6 @@
 mod commands;
 mod constants;
+mod draft_image;
 mod generation;
 mod research;
 mod x_media;
@@ -12,6 +13,7 @@ use tauri::Manager;
 #[derive(Clone)]
 pub struct AppState {
     pub db: SqlitePool,
+    pub app_data_dir: PathBuf,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -46,7 +48,10 @@ pub fn run() {
           .await
           .expect("failed to run database migrations");
 
-        app.manage(AppState { db: pool });
+        app.manage(AppState {
+          db: pool,
+          app_data_dir: app_data_dir.clone(),
+        });
       });
 
       Ok(())
