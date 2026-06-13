@@ -187,9 +187,26 @@ function DraftCard({
 
         <p className="font-medium whitespace-pre-wrap">{draft.text}</p>
 
+        {draft.image_url && (
+          <img
+            src={draft.image_url}
+            alt="Post attachment from source"
+            className="mt-2 rounded-lg max-h-48 w-full object-cover"
+            data-testid={`draft-image-${draft.id}`}
+            onError={(e) => {
+              (e.target as HTMLImageElement).style.display = 'none'
+            }}
+          />
+        )}
+
         {sources.length > 0 && (
           <div className="text-xs opacity-60 mt-2">
-            Sources: {sources.map((s) => s.user || s.source || s.title).join(', ')}
+            Sources:{' '}
+            {sources
+              .map((s: { user?: string; source?: string; source_name?: string; title?: string }) =>
+                s.source_name || s.user || s.source || s.title
+              )
+              .join(', ')}
           </div>
         )}
 

@@ -6,6 +6,23 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 type HmacSha1 = Hmac<Sha1>;
 
+pub fn extract_tweet_id_from_url(url: &str) -> Option<String> {
+    let lower = url.to_lowercase();
+    for host in ["x.com/", "twitter.com/"] {
+        if let Some(idx) = lower.find(host) {
+            let rest = &url[idx + host.len()..];
+            if let Some(status_idx) = rest.to_lowercase().find("/status/") {
+                let after = &rest[status_idx + "/status/".len()..];
+                let id: String = after.chars().take_while(|c| c.is_ascii_digit()).collect();
+                if !id.is_empty() {
+                    return Some(id);
+                }
+            }
+        }
+    }
+    None
+}
+
 #[derive(Debug, Clone)]
 pub struct XCredentials {
     pub api_key: String,
@@ -106,6 +123,41 @@ fn oauth_header(
     Ok(format!("OAuth {}", auth_parts.join(", ")))
 }
 
+fn oauth_url_parts(url: &str) -> (String, BTreeMap<String, String>) {
+    let mut query_params = BTreeMap::new();
+    let base = if let Some(idx) = url.find('?') {
+        let query = &url[idx + 1..];
+        for pair in query.split('&') {
+            let mut parts = pair.splitn(2, '=');
+            let key = parts.next().unwrap_or("");
+            let value = parts.next().unwrap_or("");
+            if key.is_empty() {
+                continue;
+            }
+            let decoded_key = urlencoding::decode(key)
+                .map(|s| s.into_owned())
+                .unwrap_or_else(|_| key.to_string());
+            let decoded_value = urlencoding::decode(value)
+                .map(|s| s.into_owned())
+                .unwrap_or_else(|_| value.to_string());
+            query_params.insert(decoded_key, decoded_value);
+        }
+        url[..idx].to_string()
+    } else {
+        url.to_string()
+    };
+    (base, query_params)
+}
+
+pub fn oauth_get_header(url: &str, creds: &XCredentials) -> Result<String, String> {
+    let (base, query_params) = oauth_url_parts(url);
+    oauth_header("GET", &base, creds, &query_params)
+}
+
+pub fn oauth_post_multipart_header(url: &str, creds: &XCredentials) -> Result<String, String> {
+    oauth_header("POST", url, creds, &BTreeMap::new())
+}
+
 fn format_x_api_error(status: reqwest::StatusCode, body: &str) -> String {
     let parsed: Result<serde_json::Value, _> = serde_json::from_str(body);
     if let Ok(json) = parsed {
@@ -131,7 +183,11 @@ fn format_x_api_error(status: reqwest::StatusCode, body: &str) -> String {
 }
 
 /// Post a text tweet via X API v2 (OAuth 1.0a user context).
-pub async fn post_tweet(creds: &XCredentials, text: &str) -> Result<String, String> {
+pub async fn post_tweet(
+    creds: &XCredentials,
+    text: &str,
+    media_ids: &[String],
+) -> Result<String, String> {
     let url = "https://api.twitter.com/2/tweets";
     let auth = oauth_header("POST", url, creds, &BTreeMap::new())?;
 
@@ -140,7 +196,14 @@ pub async fn post_tweet(creds: &XCredentials, text: &str) -> Result<String, Stri
         .build()
         .map_err(|e| e.to_string())?;
 
-    let body = serde_json::json!({ "text": text });
+    let body = if media_ids.is_empty() {
+        serde_json::json!({ "text": text })
+    } else {
+        serde_json::json!({
+            "text": text,
+            "media": { "media_ids": media_ids }
+        })
+    };
 
     let res = client
         .post(url)
@@ -204,6 +267,14 @@ pub async fn verify_credentials(creds: &XCredentials) -> Result<String, String> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_extract_tweet_id_from_url() {
+        assert_eq!(
+            extract_tweet_id_from_url("https://x.com/SawyerMerritt/status/1928374650123456789"),
+            Some("1928374650123456789".to_string())
+        );
+    }
 
     #[test]
     fn test_percent_encode() {

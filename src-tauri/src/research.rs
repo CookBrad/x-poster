@@ -1,3 +1,4 @@
+use crate::x_post::extract_tweet_id_from_url;
 use chrono::{DateTime, Utc};
 use feed_rs::parser;
 use reqwest::Client;
@@ -23,6 +24,9 @@ pub struct ResearchSource {
     /// This can be duplicated across different research runs.
     /// The `id` field is the unique row identifier in the database.
     pub original_id: Option<String>,
+
+    /// Direct image URL from the source post (X photo), when known.
+    pub media_url: Option<String>,
 }
 
 /// Fetches recent items from a list of RSS feeds relevant to Tesla/TSLA/Elon.
@@ -116,6 +120,7 @@ async fn fetch_single_rss(client: &Client, url: &str) -> Result<Vec<ResearchSour
             reply_count: None,
             quote_count: None,
             original_id: Some(entry.id.clone()),
+            media_url: None,
         });
     }
 
@@ -207,6 +212,7 @@ Return ONLY a JSON array (no markdown fences, no extra prose outside the array) 
     "author": "username without @",
     "url": "DIRECT link to the original X post in exact format https://x.com/author/status/POST_ID (highly preferred when you are certain it is accurate)",
     "post_id": "the exact post ID if you can determine it with high confidence",
+    "media_url": "direct HTTPS URL to the main photo in the post, if the post includes an image and you can determine the URL with high confidence; otherwise omit or null",
     "date": "YYYY-MM-DD if known, or a clear relative date like 'June 2 2026' or '2 days ago'",
     "why_interesting": "1-2 sentence note on why this is useful for a research post",
     "confidence": "high | medium | low  (how confident you are that the text, author, and link are accurate and real)"
@@ -396,6 +402,21 @@ If verbatim recent posts are limited, still return the best substantive items yo
             None
         };
 
+        let media_url = item
+            .get("media_url")
+            .and_then(|m| m.as_str())
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty() && s.starts_with("http"))
+            .map(|s| s.to_string());
+
+        let original_id = if !post_id.is_empty() {
+            Some(post_id.to_string())
+        } else if let Some(id) = extract_tweet_id_from_url(&url) {
+            Some(id)
+        } else {
+            None
+        };
+
         sources.push(ResearchSource {
             id: format!("grok_x_{}", uuid::Uuid::new_v4()),
             title: text.chars().take(100).collect::<String>()
@@ -409,7 +430,8 @@ If verbatim recent posts are limited, still return the best substantive items yo
             like_count: None,
             reply_count: None,
             quote_count: None,
-            original_id: Some(text.clone()), // or better identifier if available
+            original_id,
+            media_url,
         });
     }
 

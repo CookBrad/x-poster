@@ -1,0 +1,1 @@
+ALTER TABLE research_sources ADD COLUMN media_url TEXT;

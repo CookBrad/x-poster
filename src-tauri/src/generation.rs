@@ -9,6 +9,7 @@ use std::time::Duration;
 pub struct GeneratedDraftItem {
     pub text: String,
     pub rationale: Option<String>,
+    pub primary_author: Option<String>,
 }
 
 /// Build system prompt enforcing fresh-take + inline attribution (T-005 / T-015).
@@ -17,7 +18,7 @@ pub fn build_generation_system_prompt() -> &'static str {
 
 CRITICAL RULES:
 1. FRESH TAKE REQUIRED: Provide original analysis, implications, connections, or a novel angle. Do NOT restate or closely paraphrase what sources already said. Do NOT write generic hype.
-2. INLINE ATTRIBUTION: When you use a specific fact from a source, attribute it inline in the post text (e.g. "As @SawyerMerritt noted..." or "Per Teslarati...").
+2. INLINE ATTRIBUTION: When you use a specific fact from a source, attribute it inline with an @ mention (e.g. "As @SawyerMerritt noted..." or "Per @Teslarati..."). Never use parenthetical handles like (SawyerMerritt).
 3. Avoid repeating themes from the user's RECENT POSTS list below — find a different angle.
 4. Non-political, company/tech focus only. No partisan takes.
 5. Each post must be under 280 characters unless clearly marked needs_thread (we prefer single tweets under 280).
@@ -29,7 +30,8 @@ BAD example: "Tesla is doing great things with FSD!" (no fresh take, no attribut
 Return ONLY a JSON array (no markdown fences), each object:
 {
   "text": "the tweet/post text",
-  "rationale": "1 sentence on what fresh angle you added"
+  "rationale": "1 sentence on what fresh angle you added",
+  "primary_author": "username without @ for the main X source this draft draws from, or null for RSS-only"
 }"#
 }
 
@@ -42,10 +44,11 @@ pub fn build_generation_user_prompt(
     for (i, s) in sources.iter().take(20).enumerate() {
         let excerpt: String = s.content.chars().take(400).collect();
         source_lines.push(format!(
-            "{}. [{}] {} — {}\n   URL: {}",
+            "{}. [{}] {} (@{}) — {}\n   URL: {}",
             i + 1,
             s.source_type,
             s.title,
+            s.source_name.trim_start_matches('@'),
             excerpt,
             s.url
         ));
@@ -100,6 +103,10 @@ pub fn parse_generated_drafts(content: &str) -> Result<Vec<GeneratedDraftItem>, 
         items.push(GeneratedDraftItem {
             text,
             rationale: v["rationale"].as_str().map(|s| s.to_string()),
+            primary_author: v["primary_author"]
+                .as_str()
+                .map(|s| s.trim().trim_start_matches('@').to_string())
+                .filter(|s| !s.is_empty()),
         });
     }
 
@@ -180,10 +187,23 @@ pub async fn generate_drafts_from_sources_db(
 
     let mut drafts = Vec::new();
     for item in generated {
+        let text = crate::x_media::normalize_source_mentions(&item.text, sources);
+        let image_url = item
+            .primary_author
+            .as_ref()
+            .and_then(|author| {
+                sources.iter().find(|s| {
+                    s.source_name
+                        .trim_start_matches('@')
+                        .eq_ignore_ascii_case(author)
+                })
+            })
+            .and_then(|s| s.media_url.clone());
+
         let input = CreateDraftInput {
-            text: item.text,
+            text,
             sources_json: sources_json.clone(),
-            image_url: None,
+            image_url,
         };
         let draft = create_draft_db(db, input).await?;
         drafts.push(draft);
@@ -221,6 +241,7 @@ mod tests {
             reply_count: None,
             quote_count: None,
             original_id: None,
+            media_url: None,
         }];
         let prompt = build_generation_user_prompt(&sources, &["Old post about Cybertruck".into()], 2);
         assert!(prompt.contains("Robotaxi"));

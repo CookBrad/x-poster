@@ -1,6 +1,7 @@
 mod commands;
 mod generation;
 mod research;
+mod x_media;
 mod x_post;
 
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};

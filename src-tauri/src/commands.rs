@@ -1,4 +1,4 @@
-use crate::{generation, research, x_post, AppState};
+use crate::{generation, research, x_media, x_post, AppState};
 use serde::{Deserialize, Serialize};
 use sqlx::sqlite::SqlitePool;
 use tauri::State;
@@ -610,8 +610,8 @@ pub async fn run_research(state: State<'_, AppState>, mode: Option<String>) -> R
             INSERT OR IGNORE INTO research_sources (
                 id, run_id, title, content, url, published_at, 
                 source_name, source_type, retweet_count, like_count, 
-                reply_count, quote_count, original_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                reply_count, quote_count, original_id, media_url
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#
         )
         .bind(&row_id)
@@ -627,6 +627,7 @@ pub async fn run_research(state: State<'_, AppState>, mode: Option<String>) -> R
         .bind(source.reply_count)
         .bind(source.quote_count)
         .bind(&source.original_id)
+        .bind(&source.media_url)
         .execute(&state.db)
         .await
         .map_err(|e| format!("Failed to save research source: {}", e))?;
@@ -894,7 +895,21 @@ pub async fn post_draft_to_x(state: State<'_, AppState>, id: String) -> Result<D
     }
 
     let creds = load_x_credentials_db(&state.db).await?;
-    let tweet_id = x_post::post_tweet(&creds, &draft.text).await?;
+
+    let sources: Vec<research::ResearchSource> =
+        serde_json::from_str(&draft.sources_json).unwrap_or_default();
+    let text = x_media::normalize_source_mentions(&draft.text, &sources);
+    let primary = x_media::primary_x_source(&text, &sources);
+
+    let media_id = x_media::resolve_post_media(
+        &creds,
+        draft.image_url.as_deref(),
+        primary,
+    )
+    .await?;
+
+    let media_ids: Vec<String> = media_id.into_iter().collect();
+    let tweet_id = x_post::post_tweet(&creds, &text, &media_ids).await?;
 
     mark_draft_posted_db(&state.db, id, tweet_id.clone()).await?;
 
