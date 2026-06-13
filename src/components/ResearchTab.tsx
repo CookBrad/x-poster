@@ -69,7 +69,7 @@ export function ResearchTab() {
     try {
       const drafts = await generateDraftsFromLatestResearch(DEFAULT_DRAFT_GENERATION_COUNT)
       setGenerateSuccess(
-        `Generated ${drafts.length} draft(s) with fresh-take prompts. Open the Posts tab to review.`
+        `Generated ${drafts.length} draft(s) with insight-focused prompts. Open the Posts tab to review.`
       )
     } catch (generateError: unknown) {
       console.error(generateError)

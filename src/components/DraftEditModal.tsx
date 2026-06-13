@@ -92,7 +92,8 @@ export function DraftEditModal({ draft, open, onClose, onSaved }: DraftEditModal
               ))}
             </ul>
             <p className="text-[10px] opacity-50 mt-1">
-              Generation avoided repeating themes from your recent posted drafts when possible.
+              Drafts aim for useful insight (not headline regurgitation), constructive bullish framing on
+              Musk companies, and $TSLA when stock-relevant.
             </p>
           </div>
         )}
