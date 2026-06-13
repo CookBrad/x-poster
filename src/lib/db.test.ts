@@ -4,6 +4,7 @@ import {
   getDrafts,
   updateDraft,
   deleteDraft,
+  clearPendingDrafts,
   markDraftPosted,
   resetResearchData,
   getAllHistoricalSources,
@@ -90,6 +91,15 @@ describe('db.ts - Tauri command wrappers', () => {
         id: 'draft-123',
         input: { text: 'Updated text', status: 'pending' },
       })
+    })
+  })
+
+  describe('clearPendingDrafts', () => {
+    it('calls clear_pending_drafts command', async () => {
+      mockInvoke.mockResolvedValueOnce({ deleted: 3 })
+      const result = await clearPendingDrafts()
+      expect(mockInvoke).toHaveBeenCalledWith('clear_pending_drafts', {})
+      expect(result).toEqual({ deleted: 3 })
     })
   })
 

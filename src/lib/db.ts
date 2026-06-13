@@ -60,6 +60,15 @@ export async function deleteDraft(id: string): Promise<void> {
   return invoke('delete_draft', { id })
 }
 
+export interface ClearPendingDraftsResult {
+  deleted: number
+}
+
+/** Delete all drafts with status pending. Posted items are kept. */
+export async function clearPendingDrafts(): Promise<ClearPendingDraftsResult> {
+  return invoke<ClearPendingDraftsResult>('clear_pending_drafts', {})
+}
+
 /**
  * Mark a draft as successfully posted to X
  */

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import PostsTab from './PostsTab'
-import { getDrafts, postDraftToX, parseSources, type Draft } from '../lib/db'
+import { getDrafts, postDraftToX, clearPendingDrafts, parseSources, type Draft } from '../lib/db'
 import { invoke } from '@tauri-apps/api/core'
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -16,12 +16,14 @@ vi.mock('../lib/db', async (importOriginal) => {
     createDraft: vi.fn(),
     updateDraft: vi.fn(),
     deleteDraft: vi.fn(),
+    clearPendingDrafts: vi.fn(),
     postDraftToX: vi.fn(),
   }
 })
 
 const mockGetDrafts = vi.mocked(getDrafts)
 const mockPostDraftToX = vi.mocked(postDraftToX)
+const mockClearPendingDrafts = vi.mocked(clearPendingDrafts)
 const mockInvoke = vi.mocked(invoke)
 
 const pendingDraft: Draft = {
@@ -75,6 +77,26 @@ describe('PostsTab', () => {
       expect(screen.getByText(/Already posted tweet/i)).toBeInTheDocument()
     })
     expect(screen.queryByText(/Fresh take on Robotaxi/i)).not.toBeInTheDocument()
+  })
+
+  it('clears all pending posts after confirmation', async () => {
+    mockClearPendingDrafts.mockResolvedValueOnce({ deleted: 1 })
+    mockGetDrafts
+      .mockResolvedValueOnce([pendingDraft, postedDraft])
+      .mockResolvedValueOnce([postedDraft])
+
+    render(<PostsTab />)
+    await waitFor(() => {
+      expect(screen.getByTestId('clear-pending-posts')).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByTestId('clear-pending-posts'))
+    fireEvent.click(screen.getByTestId('confirm-clear-pending'))
+
+    await waitFor(() => {
+      expect(mockClearPendingDrafts).toHaveBeenCalled()
+      expect(screen.queryByText(/Fresh take on Robotaxi/i)).not.toBeInTheDocument()
+    })
   })
 
   it('moves to posted sub-tab after approve', async () => {

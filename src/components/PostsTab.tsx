@@ -4,6 +4,7 @@ import {
   createDraft,
   updateDraft,
   deleteDraft,
+  clearPendingDrafts,
   postDraftToX,
   type Draft,
 } from '../lib/db'
@@ -19,6 +20,8 @@ export default function PostsTab() {
   const [error, setError] = useState<string | null>(null)
   const [editingDraft, setEditingDraft] = useState<Draft | null>(null)
   const [postingId, setPostingId] = useState<string | null>(null)
+  const [showClearConfirm, setShowClearConfirm] = useState(false)
+  const [clearing, setClearing] = useState(false)
 
   const loadDrafts = useCallback(async () => {
     try {
@@ -89,6 +92,24 @@ export default function PostsTab() {
     }
   }
 
+  const handleClearPending = async () => {
+    setShowClearConfirm(false)
+    setClearing(true)
+    setError(null)
+    try {
+      const result = await clearPendingDrafts()
+      await loadDrafts()
+      if (result.deleted === 0) {
+        setError('No pending posts to clear.')
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to clear pending posts')
+      await loadDrafts()
+    } finally {
+      setClearing(false)
+    }
+  }
+
   const handleApprovePost = async (draft: Draft) => {
     setPostingId(draft.id)
     setError(null)
@@ -132,24 +153,75 @@ export default function PostsTab() {
         </div>
       </div>
 
-      <div className="flex gap-4 mb-4" data-testid="posts-subtabs">
-        <button
-          type="button"
-          className={`btn btn-sm min-w-[7rem] ${subTab === 'pending' ? 'btn-primary' : 'btn-outline'}`}
-          onClick={() => setSubTab('pending')}
-          data-testid="posts-subtab-pending"
-        >
-          Pending {pendingCount > 0 ? `(${pendingCount})` : ''}
-        </button>
-        <button
-          type="button"
-          className={`btn btn-sm min-w-[7rem] ${subTab === 'posted' ? 'btn-primary' : 'btn-outline'}`}
-          onClick={() => setSubTab('posted')}
-          data-testid="posts-subtab-posted"
-        >
-          Posted {postedCount > 0 ? `(${postedCount})` : ''}
-        </button>
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+        <div className="flex gap-4" data-testid="posts-subtabs">
+          <button
+            type="button"
+            className={`btn btn-sm min-w-[7rem] ${subTab === 'pending' ? 'btn-primary' : 'btn-outline'}`}
+            onClick={() => setSubTab('pending')}
+            data-testid="posts-subtab-pending"
+          >
+            Pending {pendingCount > 0 ? `(${pendingCount})` : ''}
+          </button>
+          <button
+            type="button"
+            className={`btn btn-sm min-w-[7rem] ${subTab === 'posted' ? 'btn-primary' : 'btn-outline'}`}
+            onClick={() => setSubTab('posted')}
+            data-testid="posts-subtab-posted"
+          >
+            Posted {postedCount > 0 ? `(${postedCount})` : ''}
+          </button>
+        </div>
+
+        {subTab === 'pending' && (
+          <button
+            type="button"
+            className="btn btn-error btn-outline btn-sm"
+            onClick={() => setShowClearConfirm(true)}
+            disabled={pendingCount === 0 || clearing}
+            data-testid="clear-pending-posts"
+          >
+            {clearing ? 'Clearing…' : 'Clear Pending'}
+          </button>
+        )}
       </div>
+
+      {showClearConfirm && (
+        <dialog className="modal modal-open">
+          <div className="modal-box">
+            <h3 className="font-bold text-lg">Clear all pending posts?</h3>
+            <p className="py-3 text-sm opacity-80">
+              This permanently deletes {pendingCount} pending post
+              {pendingCount === 1 ? '' : 's'} from your local queue. Posted items are not affected.
+              This cannot be undone.
+            </p>
+            <div className="modal-action">
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setShowClearConfirm(false)}
+                disabled={clearing}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-error"
+                onClick={() => void handleClearPending()}
+                disabled={clearing}
+                data-testid="confirm-clear-pending"
+              >
+                {clearing ? 'Clearing…' : 'Clear Pending'}
+              </button>
+            </div>
+          </div>
+          <form method="dialog" className="modal-backdrop">
+            <button type="button" onClick={() => setShowClearConfirm(false)}>
+              close
+            </button>
+          </form>
+        </dialog>
+      )}
 
       {error && (
         <div className="alert alert-error mb-4">

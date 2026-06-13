@@ -56,6 +56,7 @@ pub fn run() {
         commands::get_draft,
         commands::update_draft,
         commands::delete_draft,
+        commands::clear_pending_drafts,
         commands::mark_draft_posted,
         commands::get_setting,
         commands::set_setting,

@@ -198,6 +198,39 @@ pub async fn delete_draft_db(db: &SqlitePool, id: String) -> Result<(), String> 
     Ok(())
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ClearPendingDraftsResult {
+    pub deleted: u64,
+}
+
+#[tauri::command]
+pub async fn clear_pending_drafts(state: State<'_, AppState>) -> Result<ClearPendingDraftsResult, String> {
+    clear_pending_drafts_db(&state.db).await
+}
+
+pub async fn clear_pending_drafts_db(db: &SqlitePool) -> Result<ClearPendingDraftsResult, String> {
+    let result = sqlx::query("DELETE FROM drafts WHERE status = 'pending'")
+        .execute(db)
+        .await
+        .map_err(|e| format!("Failed to clear pending drafts: {}", e))?;
+
+    let remaining: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM drafts WHERE status = 'pending'")
+        .fetch_one(db)
+        .await
+        .map_err(|e| format!("Failed to verify pending draft deletion: {}", e))?;
+
+    if remaining > 0 {
+        return Err(format!(
+            "Clear incomplete: {} pending draft(s) still in database",
+            remaining
+        ));
+    }
+
+    Ok(ClearPendingDraftsResult {
+        deleted: result.rows_affected(),
+    })
+}
+
 /// Mark a draft as successfully posted (Tauri command entrypoint)
 #[tauri::command]
 pub async fn mark_draft_posted(
@@ -300,6 +333,47 @@ mod tests {
 
         let fetched = get_draft_db(&db, created.id).await.unwrap().unwrap();
         assert_eq!(fetched.text, "Updated with fresh analysis");
+    }
+
+    #[tokio::test]
+    async fn test_clear_pending_drafts_keeps_posted() {
+        let db = create_test_pool().await;
+
+        let pending = create_draft_db(
+            &db,
+            CreateDraftInput {
+                text: "Pending draft".to_string(),
+                sources_json: "[]".to_string(),
+                image_url: None,
+            },
+        )
+        .await
+        .unwrap();
+
+        let posted = create_draft_db(
+            &db,
+            CreateDraftInput {
+                text: "Posted draft".to_string(),
+                sources_json: "[]".to_string(),
+                image_url: None,
+            },
+        )
+        .await
+        .unwrap();
+        mark_draft_posted_db(&db, posted.id.clone(), "tweet-1".to_string())
+            .await
+            .unwrap();
+
+        let result = clear_pending_drafts_db(&db).await.expect("clear pending");
+        assert_eq!(result.deleted, 1);
+
+        let all = get_drafts_db(&db, None).await.unwrap();
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].id, posted.id);
+        assert_eq!(all[0].status, "posted");
+
+        let gone = get_draft_db(&db, pending.id).await.unwrap();
+        assert!(gone.is_none());
     }
 
     // ============================================
