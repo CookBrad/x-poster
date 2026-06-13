@@ -1,11 +1,25 @@
 import { useEffect, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import { SETTING_KEYS } from '../lib/constants'
+import { errorMessage } from '../lib/errors'
 
-const KEYS = [
-  { key: 'x_consumer_key', label: 'API Key (Consumer Key)', placeholder: 'From X Developer Portal' },
-  { key: 'x_consumer_secret', label: 'API Secret (Consumer Secret)', placeholder: 'Keep private' },
-  { key: 'x_access_token', label: 'Access Token', placeholder: 'User context token' },
-  { key: 'x_access_token_secret', label: 'Access Token Secret', placeholder: 'User context secret' },
+const CREDENTIAL_FIELDS = [
+  {
+    key: SETTING_KEYS.xConsumerKey,
+    label: 'API Key (Consumer Key)',
+    placeholder: 'From X Developer Portal',
+  },
+  {
+    key: SETTING_KEYS.xConsumerSecret,
+    label: 'API Secret (Consumer Secret)',
+    placeholder: 'Keep private',
+  },
+  { key: SETTING_KEYS.xAccessToken, label: 'Access Token', placeholder: 'User context token' },
+  {
+    key: SETTING_KEYS.xAccessTokenSecret,
+    label: 'Access Token Secret',
+    placeholder: 'User context secret',
+  },
 ] as const
 
 export default function XCredentialsSettings() {
@@ -19,7 +33,7 @@ export default function XCredentialsSettings() {
   useEffect(() => {
     void (async () => {
       const loaded: Record<string, string> = {}
-      for (const { key } of KEYS) {
+      for (const { key } of CREDENTIAL_FIELDS) {
         try {
           const v = await invoke<string | null>('get_setting', { key })
           if (v) loaded[key] = v
@@ -36,15 +50,15 @@ export default function XCredentialsSettings() {
     setError(null)
     setMessage(null)
     try {
-      for (const { key } of KEYS) {
+      for (const { key } of CREDENTIAL_FIELDS) {
         const value = values[key] ?? ''
         if (value.trim()) {
           await invoke('set_setting', { key, value: value.trim() })
         }
       }
       setMessage('X credentials saved.')
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Failed to save')
+    } catch (saveError: unknown) {
+      setError(errorMessage(saveError, 'Failed to save'))
     } finally {
       setSaving(false)
     }
@@ -58,8 +72,8 @@ export default function XCredentialsSettings() {
       await handleSave()
       const result = await invoke<string>('test_x_credentials', {})
       setMessage(result)
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'X credential test failed')
+    } catch (testError: unknown) {
+      setError(errorMessage(testError, 'X credential test failed'))
     } finally {
       setTesting(false)
     }
@@ -78,7 +92,7 @@ export default function XCredentialsSettings() {
         <li>Test Connection only checks identity; posting needs write permission on the token.</li>
       </ul>
 
-      {KEYS.map(({ key, label, placeholder }) => (
+      {CREDENTIAL_FIELDS.map(({ key, label, placeholder }) => (
         <label key={key} className="form-control w-full max-w-md mb-2">
           <span className="label-text text-xs">{label}</span>
           <input

@@ -1,15 +1,25 @@
 import { invoke } from '@tauri-apps/api/core'
+import { DEFAULT_DRAFT_GENERATION_COUNT, type DraftStatus } from './constants'
 
 export interface Draft {
   id: string
   text: string
   sources_json: string
   image_url: string | null
-  status: 'pending' | 'posted' | 'skipped'
+  status: DraftStatus
   created_at: string
   updated_at: string
   posted_at: string | null
   x_post_id: string | null
+}
+
+export interface DraftSource {
+  type?: string
+  user?: string
+  source?: string
+  source_name?: string
+  title?: string
+  text?: string
 }
 
 export interface CreateDraftInput {
@@ -21,41 +31,25 @@ export interface CreateDraftInput {
 export interface UpdateDraftInput {
   text?: string
   image_url?: string | null
-  status?: 'pending' | 'posted' | 'skipped'
+  status?: DraftStatus
 }
 
-/**
- * Create a new draft
- */
 export async function createDraft(input: CreateDraftInput): Promise<Draft> {
   return invoke<Draft>('create_draft', { input })
 }
 
-/**
- * Get all drafts (optionally filtered by status)
- */
-export async function getDrafts(status?: Draft['status']): Promise<Draft[]> {
+export async function getDrafts(status?: DraftStatus): Promise<Draft[]> {
   return invoke<Draft[]>('get_drafts', { status })
 }
 
-/**
- * Get a single draft by ID
- */
 export async function getDraft(id: string): Promise<Draft | null> {
   return invoke<Draft | null>('get_draft', { id })
 }
 
-/**
- * Update a draft
- */
 export async function updateDraft(id: string, input: UpdateDraftInput): Promise<void> {
   return invoke('update_draft', { id, input })
 }
 
-/**
- * Delete a draft or posted item.
- * For posted items this removes the local record only (does not delete from X).
- */
 export async function deleteDraft(id: string): Promise<void> {
   return invoke('delete_draft', { id })
 }
@@ -64,21 +58,13 @@ export interface ClearPendingDraftsResult {
   deleted: number
 }
 
-/** Delete all drafts with status pending. Posted items are kept. */
 export async function clearPendingDrafts(): Promise<ClearPendingDraftsResult> {
   return invoke<ClearPendingDraftsResult>('clear_pending_drafts', {})
 }
 
-/**
- * Mark a draft as successfully posted to X
- */
 export async function markDraftPosted(id: string, xPostId: string): Promise<void> {
   return invoke('mark_draft_posted', { id, xPostId })
 }
-
-// ============================================
-// Research (T-003 / T-004)
-// ============================================
 
 export interface ResearchSource {
   id: string;
@@ -101,20 +87,14 @@ export async function fetchResearchSources(): Promise<ResearchSource[]> {
   return invoke('fetch_research_sources');
 }
 
-/**
- * Helper to parse sources from a draft
- */
-export function parseSources(draft: Draft): any[] {
+export function parseSources(draft: Draft): DraftSource[] {
   try {
-    return JSON.parse(draft.sources_json || '[]')
+    const parsed: unknown = JSON.parse(draft.sources_json || '[]')
+    return Array.isArray(parsed) ? (parsed as DraftSource[]) : []
   } catch {
     return []
   }
 }
-
-// ============================================
-// Research Runs (Current + Historical)
-// ============================================
 
 export interface ResearchRun {
   id: string;
@@ -156,25 +136,15 @@ export interface ResetResearchResult {
   deleted_runs: number;
 }
 
-/**
- * Permanently deletes all research runs and sources from the local database.
- * This cannot be undone. Use with caution (UI should show a warning prompt).
- */
 export async function resetResearchData(): Promise<ResetResearchResult> {
   return invoke<ResetResearchResult>('reset_research_data', {});
 }
 
-// ============================================
-// Draft generation (T-005 / T-006)
-// ============================================
-
-export async function generateDraftsFromLatestResearch(count = 3): Promise<Draft[]> {
+export async function generateDraftsFromLatestResearch(
+  count = DEFAULT_DRAFT_GENERATION_COUNT
+): Promise<Draft[]> {
   return invoke<Draft[]>('generate_drafts_from_latest_research', { count });
 }
-
-// ============================================
-// X posting (T-007)
-// ============================================
 
 export async function postDraftToX(id: string): Promise<Draft> {
   return invoke<Draft>('post_draft_to_x', { id });

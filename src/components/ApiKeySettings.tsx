@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import { DEFAULT_GROK_MODEL, SETTING_KEYS } from '../lib/constants'
+import { errorMessage } from '../lib/errors'
 
 interface ApiKeySettingsProps {
   initialSavedKey?: string
@@ -15,13 +17,13 @@ export default function ApiKeySettings({ initialSavedKey = '', onKeySaved, onKey
   const [testResult, setTestResult] = useState('')
   const [error, setError] = useState('')
 
-  const [grokModel, setGrokModel] = useState('grok-4.3')
+  const [grokModel, setGrokModel] = useState(DEFAULT_GROK_MODEL)
 
   // Load saved Grok model preference
   useEffect(() => {
     (async () => {
       try {
-        const saved = await invoke<string | null>('get_setting', { key: 'grok_model' })
+        const saved = await invoke<string | null>('get_setting', { key: SETTING_KEYS.grokModel })
         if (saved) setGrokModel(saved)
       } catch {}
     })()
@@ -40,7 +42,7 @@ export default function ApiKeySettings({ initialSavedKey = '', onKeySaved, onKey
     setTestResult('')
 
     try {
-      await invoke('set_setting', { key: 'xai_api_key', value: keyToSave })
+      await invoke('set_setting', { key: SETTING_KEYS.xaiApiKey, value: keyToSave })
       setSavedXaiKey(keyToSave)
       setXaiKeyInput('')
       setKeySaved(true)
@@ -50,8 +52,8 @@ export default function ApiKeySettings({ initialSavedKey = '', onKeySaved, onKey
       }
 
       setTimeout(() => setKeySaved(false), 3000)
-    } catch (e: any) {
-      setError(`Failed to save key: ${e}`)
+    } catch (saveError: unknown) {
+      setError(`Failed to save key: ${errorMessage(saveError)}`)
     }
   }
 
@@ -67,7 +69,9 @@ export default function ApiKeySettings({ initialSavedKey = '', onKeySaved, onKey
     // Load the saved model preference (defaults to grok-4.3)
     let modelToUse = grokModel
     try {
-      const savedModel = await invoke<string | null>('get_setting', { key: 'grok_model' })
+      const savedModel = await invoke<string | null>('get_setting', {
+        key: SETTING_KEYS.grokModel,
+      })
       if (savedModel) modelToUse = savedModel
     } catch {}
 
@@ -106,7 +110,7 @@ export default function ApiKeySettings({ initialSavedKey = '', onKeySaved, onKey
     setTestResult('')
 
     try {
-      await invoke('delete_setting', { key: 'xai_api_key' })
+      await invoke('delete_setting', { key: SETTING_KEYS.xaiApiKey })
       setSavedXaiKey('')
       setXaiKeyInput('')
       setKeySaved(false)
@@ -114,8 +118,8 @@ export default function ApiKeySettings({ initialSavedKey = '', onKeySaved, onKey
       if (onKeyCleared) {
         onKeyCleared()
       }
-    } catch (e: any) {
-      setError(`Failed to reset key: ${e}`)
+    } catch (resetError: unknown) {
+      setError(`Failed to reset key: ${errorMessage(resetError)}`)
     }
   }
 
@@ -166,7 +170,7 @@ export default function ApiKeySettings({ initialSavedKey = '', onKeySaved, onKey
             const newModel = e.target.value
             setGrokModel(newModel)
             try {
-              await invoke('set_setting', { key: 'grok_model', value: newModel })
+              await invoke('set_setting', { key: SETTING_KEYS.grokModel, value: newModel })
             } catch (err) {
               console.error('Failed to save model', err)
             }

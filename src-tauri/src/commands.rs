@@ -1,4 +1,10 @@
-use crate::{generation, research, x_media, x_post, AppState};
+use crate::{
+    constants::{
+        draft_status, settings, DEFAULT_DRAFT_COUNT, DEFAULT_GROK_MODEL, MAX_DRAFT_COUNT,
+        RESEARCH_SOURCE_LIMIT,
+    },
+    generation, research, x_media, x_post, AppState,
+};
 use serde::{Deserialize, Serialize};
 use sqlx::sqlite::SqlitePool;
 use tauri::State;
@@ -10,7 +16,7 @@ pub struct Draft {
     pub text: String,
     pub sources_json: String,
     pub image_url: Option<String>,
-    pub status: String, // "pending" | "posted" | "skipped"
+    pub status: String,
     pub created_at: String,
     pub updated_at: String,
     pub posted_at: Option<String>,
@@ -50,7 +56,7 @@ pub async fn create_draft_db(db: &SqlitePool, input: CreateDraftInput) -> Result
         text: input.text,
         sources_json: input.sources_json,
         image_url: input.image_url,
-        status: "pending".to_string(),
+        status: draft_status::PENDING.to_string(),
         created_at: now.clone(),
         updated_at: now.clone(),
         posted_at: None,
@@ -209,12 +215,14 @@ pub async fn clear_pending_drafts(state: State<'_, AppState>) -> Result<ClearPen
 }
 
 pub async fn clear_pending_drafts_db(db: &SqlitePool) -> Result<ClearPendingDraftsResult, String> {
-    let result = sqlx::query("DELETE FROM drafts WHERE status = 'pending'")
+    let result = sqlx::query("DELETE FROM drafts WHERE status = ?")
+        .bind(draft_status::PENDING)
         .execute(db)
         .await
         .map_err(|e| format!("Failed to clear pending drafts: {}", e))?;
 
-    let remaining: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM drafts WHERE status = 'pending'")
+    let remaining: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM drafts WHERE status = ?")
+        .bind(draft_status::PENDING)
         .fetch_one(db)
         .await
         .map_err(|e| format!("Failed to verify pending draft deletion: {}", e))?;
@@ -251,13 +259,14 @@ pub async fn mark_draft_posted_db(
     sqlx::query(
         r#"
         UPDATE drafts 
-        SET status = 'posted', 
+        SET status = ?,
             x_post_id = ?, 
             posted_at = ?, 
             updated_at = ?
         WHERE id = ?
         "#
     )
+    .bind(draft_status::POSTED)
     .bind(x_post_id)
     .bind(&now)
     .bind(&now)
@@ -522,33 +531,144 @@ mod tests {
     }
 }
 
-// ============================================
-// Research Commands (T-003 / T-004 / T-006)
-// ============================================
+async fn load_grok_settings(db: &SqlitePool) -> Result<(String, String), String> {
+    let xai_key = get_setting_db(db, settings::XAI_API_KEY.to_string())
+        .await?
+        .unwrap_or_default();
+    let grok_model = get_setting_db(db, settings::GROK_MODEL.to_string())
+        .await?
+        .unwrap_or_else(|| DEFAULT_GROK_MODEL.to_string());
+    Ok((xai_key, grok_model))
+}
+
+async fn require_xai_api_key(db: &SqlitePool) -> Result<String, String> {
+    get_setting_db(db, settings::XAI_API_KEY.to_string())
+        .await?
+        .filter(|key| !key.is_empty())
+        .ok_or_else(|| "xAI API key is required. Set it in Settings.".to_string())
+}
+
+async fn require_setting(db: &SqlitePool, key: &str, label: &str) -> Result<String, String> {
+    get_setting_db(db, key.to_string())
+        .await?
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| format!("{} is not set in Settings.", label))
+}
+
+async fn fetch_sources_for_run(
+    db: &SqlitePool,
+    run_id: &str,
+) -> Result<Vec<research::ResearchSource>, String> {
+    sqlx::query_as("SELECT * FROM research_sources WHERE run_id = ? ORDER BY published_at DESC")
+        .bind(run_id)
+        .fetch_all(db)
+        .await
+        .map_err(|e| format!("Failed to fetch sources for run: {}", e))
+}
+
+async fn fetch_run_with_sources(
+    db: &SqlitePool,
+    run_id: &str,
+) -> Result<ResearchRunWithSources, String> {
+    let run: ResearchRun = sqlx::query_as("SELECT * FROM research_runs WHERE id = ?")
+        .bind(run_id)
+        .fetch_optional(db)
+        .await
+        .map_err(|e| format!("Failed to fetch run: {}", e))?
+        .ok_or_else(|| format!("Research run '{}' not found.", run_id))?;
+
+    let sources = fetch_sources_for_run(db, &run.id).await?;
+    Ok(ResearchRunWithSources { run, sources })
+}
+
+async fn fetch_latest_run_with_sources(
+    db: &SqlitePool,
+) -> Result<Option<ResearchRunWithSources>, String> {
+    let run: Option<ResearchRun> = sqlx::query_as(
+        "SELECT * FROM research_runs ORDER BY run_at DESC LIMIT 1",
+    )
+    .fetch_optional(db)
+    .await
+    .map_err(|e| format!("Failed to fetch latest run: {}", e))?;
+
+    match run {
+        Some(run) => {
+            let sources = fetch_sources_for_run(db, &run.id).await?;
+            Ok(Some(ResearchRunWithSources { run, sources }))
+        }
+        None => Ok(None),
+    }
+}
+
+struct DraftSourceContext {
+    sources: Vec<research::ResearchSource>,
+    normalized_text: String,
+    primary_index: Option<usize>,
+}
+
+fn build_draft_source_context(draft: &Draft) -> DraftSourceContext {
+    let sources: Vec<research::ResearchSource> =
+        serde_json::from_str(&draft.sources_json).unwrap_or_default();
+    let normalized_text = x_media::normalize_source_mentions(&draft.text, &sources);
+    let primary_index = x_media::match_primary_source(&normalized_text, &sources)
+        .and_then(|primary| sources.iter().position(|source| source.id == primary.id));
+
+    DraftSourceContext {
+        sources,
+        normalized_text,
+        primary_index,
+    }
+}
+
+fn draft_has_stored_image(draft: &Draft) -> bool {
+    draft.image_url.as_ref().is_some_and(|url| !url.is_empty())
+}
+
+async fn maybe_resolve_preview_image(
+    db: &SqlitePool,
+    draft_id: &str,
+    draft: &Draft,
+    creds: Option<&x_post::XCredentials>,
+    should_resolve: bool,
+) -> Result<(), String> {
+    if !should_resolve {
+        return Ok(());
+    }
+
+    let context = build_draft_source_context(draft);
+    let primary = context
+        .primary_index
+        .and_then(|index| context.sources.get(index));
+    let preview = x_media::resolve_preview_image_url(creds, None, primary).await?;
+
+    if let Some(url) = preview {
+        update_draft_db(
+            db,
+            draft_id.to_string(),
+            UpdateDraftInput {
+                text: None,
+                image_url: Some(url),
+                status: None,
+            },
+        )
+        .await?;
+    }
+
+    Ok(())
+}
 
 #[tauri::command]
 pub async fn fetch_research_sources(state: State<'_, AppState>) -> Result<Vec<research::ResearchSource>, String> {
-    // Load xAI key (needed for Grok research)
-    let xai_key = get_setting_db(&state.db, "xai_api_key".to_string())
-        .await?
-        .unwrap_or_default();
-
+    let (xai_key, grok_model) = load_grok_settings(&state.db).await?;
     let mut sources = research::fetch_rss_sources().await?;
 
-    // X content is now discovered primarily via Grok (see fetch_grok_discovered_x_sources)
-    // Direct X API usage has been removed.
     if !xai_key.is_empty() {
-        let grok_model = get_setting_db(&state.db, "grok_model".to_string())
-            .await?
-            .unwrap_or_else(|| "grok-4.3".to_string());
-
         match research::fetch_grok_discovered_x_sources(&xai_key, &grok_model).await {
             Ok(grok_sources) => sources.extend(grok_sources),
             Err(e) => log::warn!("Grok X discovery failed: {}", e),
         }
     }
 
-    // Final sort: Grok-discovered items first, then by recency
     sources.sort_by(|a, b| {
         let a_prio = if a.source_type == "x_grok" { 0 } else { 1 };
         let b_prio = if b.source_type == "x_grok" { 0 } else { 1 };
@@ -558,7 +678,7 @@ pub async fn fetch_research_sources(state: State<'_, AppState>) -> Result<Vec<re
         b.published_at.cmp(&a.published_at)
     });
 
-    sources.truncate(30);
+    sources.truncate(RESEARCH_SOURCE_LIMIT);
     Ok(sources)
 }
 
@@ -614,13 +734,7 @@ pub async fn run_research(state: State<'_, AppState>, mode: Option<String>) -> R
     }
 
     if mode == "x" || mode == "both" {
-        let xai_key = get_setting_db(&state.db, "xai_api_key".to_string())
-            .await?
-            .unwrap_or_default();
-
-        let grok_model = get_setting_db(&state.db, "grok_model".to_string())
-            .await?
-            .unwrap_or_else(|| "grok-4.3".to_string());
+        let (xai_key, grok_model) = load_grok_settings(&state.db).await?;
 
         log::info!("run_research: xAI key present for X mode? {}", !xai_key.is_empty());
         log::info!("run_research: using Grok model: {}", grok_model);
@@ -718,27 +832,7 @@ pub async fn run_research(state: State<'_, AppState>, mode: Option<String>) -> R
 
 #[tauri::command]
 pub async fn get_latest_research_run(state: State<'_, AppState>) -> Result<Option<ResearchRunWithSources>, String> {
-    let run: Option<ResearchRun> = sqlx::query_as(
-        "SELECT * FROM research_runs ORDER BY run_at DESC LIMIT 1"
-    )
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|e| format!("Failed to fetch latest run: {}", e))?;
-
-    match run {
-        Some(run) => {
-            let sources: Vec<research::ResearchSource> = sqlx::query_as(
-                "SELECT * FROM research_sources WHERE run_id = ? ORDER BY published_at DESC"
-            )
-            .bind(&run.id)
-            .fetch_all(&state.db)
-            .await
-            .map_err(|e| format!("Failed to fetch sources for run: {}", e))?;
-
-            Ok(Some(ResearchRunWithSources { run, sources }))
-        }
-        None => Ok(None),
-    }
+    fetch_latest_run_with_sources(&state.db).await
 }
 
 #[tauri::command]
@@ -755,27 +849,10 @@ pub async fn get_research_runs(state: State<'_, AppState>) -> Result<Vec<Researc
 
 #[tauri::command]
 pub async fn get_research_run(state: State<'_, AppState>, run_id: String) -> Result<Option<ResearchRunWithSources>, String> {
-    let run: Option<ResearchRun> = sqlx::query_as(
-        "SELECT * FROM research_runs WHERE id = ?"
-    )
-    .bind(&run_id)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|e| format!("Failed to fetch run: {}", e))?;
-
-    match run {
-        Some(run) => {
-            let sources: Vec<research::ResearchSource> = sqlx::query_as(
-                "SELECT * FROM research_sources WHERE run_id = ? ORDER BY published_at DESC"
-            )
-            .bind(&run.id)
-            .fetch_all(&state.db)
-            .await
-            .map_err(|e| format!("Failed to fetch sources: {}", e))?;
-
-            Ok(Some(ResearchRunWithSources { run, sources }))
-        }
-        None => Ok(None),
+    match fetch_run_with_sources(&state.db, &run_id).await {
+        Ok(run_with_sources) => Ok(Some(run_with_sources)),
+        Err(message) if message.contains("not found") => Ok(None),
+        Err(message) => Err(message),
     }
 }
 
@@ -870,47 +947,33 @@ pub async fn generate_drafts_from_latest_research(
     state: State<'_, AppState>,
     count: Option<u32>,
 ) -> Result<Vec<Draft>, String> {
-    let count = count.unwrap_or(3).clamp(1, 5);
+    let count = count.unwrap_or(DEFAULT_DRAFT_COUNT).clamp(1, MAX_DRAFT_COUNT);
 
-    let run: Option<ResearchRun> = sqlx::query_as(
-        "SELECT * FROM research_runs ORDER BY run_at DESC LIMIT 1",
-    )
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|e| format!("Failed to fetch latest run: {}", e))?;
+    let latest_run = fetch_latest_run_with_sources(&state.db)
+        .await?
+        .ok_or("No research run found. Run research first, then generate drafts.".to_string())?;
 
-    let run = run.ok_or(
-        "No research run found. Run research first, then generate drafts.".to_string(),
-    )?;
-
-    let sources: Vec<research::ResearchSource> = sqlx::query_as(
-        "SELECT * FROM research_sources WHERE run_id = ? ORDER BY published_at DESC",
-    )
-    .bind(&run.id)
-    .fetch_all(&state.db)
-    .await
-    .map_err(|e| format!("Failed to fetch sources for run: {}", e))?;
-
-    if sources.is_empty() {
+    if latest_run.sources.is_empty() {
         return Err("Latest research run has no sources to generate from.".to_string());
     }
 
-    let xai_key = get_setting_db(&state.db, "xai_api_key".to_string())
-        .await?
-        .filter(|k| !k.is_empty())
-        .ok_or("xAI API key is required. Set it in Settings.".to_string())?;
-
-    let grok_model = get_setting_db(&state.db, "grok_model".to_string())
-        .await?
-        .unwrap_or_else(|| "grok-4.3".to_string());
+    let xai_key = require_xai_api_key(&state.db).await?;
+    let (_, grok_model) = load_grok_settings(&state.db).await?;
 
     log::info!(
         "generate_drafts_from_latest_research: {} sources, count={}",
-        sources.len(),
+        latest_run.sources.len(),
         count
     );
 
-    generation::generate_drafts_from_sources_db(&state.db, &sources, &xai_key, &grok_model, count).await
+    generation::generate_drafts_from_sources_db(
+        &state.db,
+        &latest_run.sources,
+        &xai_key,
+        &grok_model,
+        count,
+    )
+    .await
 }
 
 // ============================================
@@ -918,28 +981,21 @@ pub async fn generate_drafts_from_latest_research(
 // ============================================
 
 pub async fn load_x_credentials_db(db: &SqlitePool) -> Result<x_post::XCredentials, String> {
-    let api_key = get_setting_db(db, "x_consumer_key".to_string())
-        .await?
-        .filter(|s| !s.is_empty())
-        .ok_or("X API key (consumer key) is not set in Settings.".to_string())?;
-    let api_secret = get_setting_db(db, "x_consumer_secret".to_string())
-        .await?
-        .filter(|s| !s.is_empty())
-        .ok_or("X API secret (consumer secret) is not set in Settings.".to_string())?;
-    let access_token = get_setting_db(db, "x_access_token".to_string())
-        .await?
-        .filter(|s| !s.is_empty())
-        .ok_or("X access token is not set in Settings.".to_string())?;
-    let access_token_secret = get_setting_db(db, "x_access_token_secret".to_string())
-        .await?
-        .filter(|s| !s.is_empty())
-        .ok_or("X access token secret is not set in Settings.".to_string())?;
-
     Ok(x_post::XCredentials {
-        api_key,
-        api_secret,
-        access_token,
-        access_token_secret,
+        api_key: require_setting(db, settings::X_CONSUMER_KEY, "X API key (consumer key)").await?,
+        api_secret: require_setting(
+            db,
+            settings::X_CONSUMER_SECRET,
+            "X API secret (consumer secret)",
+        )
+        .await?,
+        access_token: require_setting(db, settings::X_ACCESS_TOKEN, "X access token").await?,
+        access_token_secret: require_setting(
+            db,
+            settings::X_ACCESS_TOKEN_SECRET,
+            "X access token secret",
+        )
+        .await?,
     })
 }
 
@@ -967,44 +1023,16 @@ pub async fn resolve_draft_image_db(db: &SqlitePool, id: String) -> Result<Draft
         .await?
         .ok_or("Draft not found".to_string())?;
 
-    let sources: Vec<research::ResearchSource> =
-        serde_json::from_str(&draft.sources_json).unwrap_or_default();
-    let text = x_media::normalize_source_mentions(&draft.text, &sources);
-    let primary = x_media::match_primary_source(&text, &sources);
+    let context = build_draft_source_context(&draft);
+    let legacy_multi_source = context.sources.len() > 1;
+    let should_resolve = legacy_multi_source || !draft_has_stored_image(&draft);
 
-    // Legacy drafts stored every research source — re-resolve image per draft.
-    let legacy_multi_source = sources.len() > 1;
-    if !legacy_multi_source {
-        if draft
-            .image_url
-            .as_ref()
-            .map(|s| !s.is_empty())
-            .unwrap_or(false)
-        {
-            return Ok(draft);
-        }
+    if !should_resolve {
+        return Ok(draft);
     }
 
     let creds = load_x_credentials_db(db).await.ok();
-    let preview = x_media::resolve_preview_image_url(
-        creds.as_ref(),
-        None,
-        primary,
-    )
-    .await?;
-
-    if let Some(url) = preview {
-        update_draft_db(
-            db,
-            id.clone(),
-            UpdateDraftInput {
-                text: None,
-                image_url: Some(url),
-                status: None,
-            },
-        )
-        .await?;
-    }
+    maybe_resolve_preview_image(db, &id, &draft, creds.as_ref(), true).await?;
 
     get_draft_db(db, id)
         .await?
@@ -1017,7 +1045,7 @@ pub async fn post_draft_to_x(state: State<'_, AppState>, id: String) -> Result<D
         .await?
         .ok_or("Draft not found".to_string())?;
 
-    if draft.status != "pending" {
+    if draft.status != draft_status::PENDING {
         return Err("Only pending drafts can be posted.".to_string());
     }
 
@@ -1026,32 +1054,26 @@ pub async fn post_draft_to_x(state: State<'_, AppState>, id: String) -> Result<D
     }
 
     let creds = load_x_credentials_db(&state.db).await?;
+    let context = build_draft_source_context(&draft);
+    let should_resolve = !draft_has_stored_image(&draft) || context.sources.len() > 1;
 
-    let sources: Vec<research::ResearchSource> =
-        serde_json::from_str(&draft.sources_json).unwrap_or_default();
-    let text = x_media::normalize_source_mentions(&draft.text, &sources);
-    let primary = x_media::match_primary_source(&text, &sources);
-
-    if draft.image_url.as_ref().map(|s| s.is_empty()).unwrap_or(true) || sources.len() > 1 {
-        if let Ok(Some(preview_url)) =
-            x_media::resolve_preview_image_url(Some(&creds), None, primary).await
-        {
-            update_draft_db(
-                &state.db,
-                draft.id.clone(),
-                UpdateDraftInput {
-                    text: None,
-                    image_url: Some(preview_url),
-                    status: None,
-                },
-            )
-            .await?;
-        }
-    }
+    maybe_resolve_preview_image(
+        &state.db,
+        &id,
+        &draft,
+        Some(&creds),
+        should_resolve,
+    )
+    .await?;
 
     let draft = get_draft_db(&state.db, id.clone())
         .await?
         .ok_or("Draft not found".to_string())?;
+
+    let context = build_draft_source_context(&draft);
+    let primary = context
+        .primary_index
+        .and_then(|index| context.sources.get(index));
 
     let media_id = x_media::resolve_post_media(
         &creds,
@@ -1061,7 +1083,7 @@ pub async fn post_draft_to_x(state: State<'_, AppState>, id: String) -> Result<D
     .await?;
 
     let media_ids: Vec<String> = media_id.into_iter().collect();
-    let tweet_id = x_post::post_tweet(&creds, &text, &media_ids).await?;
+    let tweet_id = x_post::post_tweet(&creds, &context.normalized_text, &media_ids).await?;
 
     mark_draft_posted_db(&state.db, id, tweet_id.clone()).await?;
 

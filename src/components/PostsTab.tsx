@@ -8,6 +8,16 @@ import {
   postDraftToX,
   type Draft,
 } from '../lib/db'
+import { DRAFT_STATUS } from '../lib/constants'
+import { errorMessage } from '../lib/errors'
+import {
+  buildXPostUrl,
+  countDraftsByStatus,
+  formatDraftTimestamp,
+  formatSourceLabels,
+  isPendingDraft,
+  isPostedDraft,
+} from '../lib/draftUtils'
 import { DraftEditModal } from './DraftEditModal'
 import { DraftImage } from './DraftImage'
 
@@ -23,27 +33,39 @@ export default function PostsTab() {
   const [showClearConfirm, setShowClearConfirm] = useState(false)
   const [clearing, setClearing] = useState(false)
 
+  const reportError = useCallback((message: string) => {
+    setError(message)
+  }, [])
+
   const loadDrafts = useCallback(async () => {
     try {
       setLoading(true)
       const data = await getDrafts()
       setDrafts(data)
       setError(null)
-    } catch (e: unknown) {
-      console.error(e)
-      setError('Failed to load posts from database')
+    } catch (loadError: unknown) {
+      console.error(loadError)
+      reportError('Failed to load posts from database')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [reportError])
 
   useEffect(() => {
     void loadDrafts()
   }, [loadDrafts])
 
-  const visibleDrafts = drafts.filter((d) =>
-    subTab === 'pending' ? d.status === 'pending' : d.status === 'posted'
+  const { pending: pendingCount, posted: postedCount } = countDraftsByStatus(drafts)
+
+  const visibleDrafts = drafts.filter((draft) =>
+    subTab === 'pending' ? isPendingDraft(draft) : isPostedDraft(draft)
   )
+
+  const updateDraftInList = (updated: Draft) => {
+    setDrafts((previous) =>
+      previous.map((draft) => (draft.id === updated.id ? updated : draft))
+    )
+  }
 
   const handleCreateTestDraft = async () => {
     try {
@@ -57,24 +79,23 @@ export default function PostsTab() {
       })
       setSubTab('pending')
       await loadDrafts()
-    } catch (e: unknown) {
-      alert('Failed to create test draft: ' + (e instanceof Error ? e.message : e))
+    } catch (createError: unknown) {
+      reportError(`Failed to create test draft: ${errorMessage(createError)}`)
     }
   }
 
   const handleSkip = async (id: string) => {
     try {
-      await updateDraft(id, { status: 'skipped' })
+      await updateDraft(id, { status: DRAFT_STATUS.skipped })
       await loadDrafts()
-    } catch (e: unknown) {
-      alert('Failed to skip draft: ' + (e instanceof Error ? e.message : e))
+    } catch (skipError: unknown) {
+      reportError(`Failed to skip draft: ${errorMessage(skipError)}`)
     }
   }
 
   const handleDelete = async (draft: Draft) => {
-    const isPosted = draft.status === 'posted'
     if (
-      isPosted &&
+      isPostedDraft(draft) &&
       !window.confirm(
         'Delete this posted item from your local history?\n\n(This will NOT delete the tweet on X)'
       )
@@ -82,12 +103,12 @@ export default function PostsTab() {
       return
     }
 
-    setDrafts((prev) => prev.filter((d) => d.id !== draft.id))
+    setDrafts((previous) => previous.filter((item) => item.id !== draft.id))
     try {
       await deleteDraft(draft.id)
       await loadDrafts()
-    } catch (e: unknown) {
-      alert(`Failed to delete: ${e instanceof Error ? e.message : e}`)
+    } catch (deleteError: unknown) {
+      reportError(`Failed to delete: ${errorMessage(deleteError)}`)
       await loadDrafts()
     }
   }
@@ -100,10 +121,10 @@ export default function PostsTab() {
       const result = await clearPendingDrafts()
       await loadDrafts()
       if (result.deleted === 0) {
-        setError('No pending posts to clear.')
+        reportError('No pending posts to clear.')
       }
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Failed to clear pending posts')
+    } catch (clearError: unknown) {
+      reportError(errorMessage(clearError, 'Failed to clear pending posts'))
       await loadDrafts()
     } finally {
       setClearing(false)
@@ -117,8 +138,8 @@ export default function PostsTab() {
       await postDraftToX(draft.id)
       await loadDrafts()
       setSubTab('posted')
-    } catch (e: unknown) {
-      setError('Failed to post to X: ' + (e instanceof Error ? e.message : e))
+    } catch (postError: unknown) {
+      reportError(`Failed to post to X: ${errorMessage(postError)}`)
     } finally {
       setPostingId(null)
     }
@@ -131,9 +152,6 @@ export default function PostsTab() {
       </div>
     )
   }
-
-  const pendingCount = drafts.filter((d) => d.status === 'pending').length
-  const postedCount = drafts.filter((d) => d.status === 'posted').length
 
   return (
     <div>
@@ -248,9 +266,7 @@ export default function PostsTab() {
               onApprove={() => void handleApprovePost(draft)}
               onSkip={() => void handleSkip(draft.id)}
               onDelete={() => void handleDelete(draft)}
-              onImageResolved={(updated) => {
-                setDrafts((prev) => prev.map((d) => (d.id === updated.id ? updated : d)))
-              }}
+              onImageResolved={updateDraftInList}
             />
           ))}
         </div>
@@ -261,12 +277,22 @@ export default function PostsTab() {
         open={!!editingDraft}
         onClose={() => setEditingDraft(null)}
         onSaved={(updated) => {
-          setDrafts((prev) => prev.map((d) => (d.id === updated.id ? updated : d)))
+          updateDraftInList(updated)
           setEditingDraft(null)
         }}
       />
     </div>
   )
+}
+
+interface DraftCardProps {
+  draft: Draft
+  posting: boolean
+  onEdit: () => void
+  onApprove: () => void
+  onSkip: () => void
+  onDelete: () => void
+  onImageResolved?: (updated: Draft) => void
 }
 
 function DraftCard({
@@ -277,53 +303,24 @@ function DraftCard({
   onSkip,
   onDelete,
   onImageResolved,
-}: {
-  draft: Draft
-  posting: boolean
-  onEdit: () => void
-  onApprove: () => void
-  onSkip: () => void
-  onDelete: () => void
-  onImageResolved?: (updated: Draft) => void
-}) {
-  let sources: { user?: string; source?: string; title?: string }[] = []
-  try {
-    sources = JSON.parse(draft.sources_json || '[]')
-  } catch {
-    sources = []
-  }
-
-  const xUrl =
-    draft.x_post_id && !draft.x_post_id.startsWith('sim_')
-      ? `https://x.com/i/web/status/${draft.x_post_id}`
-      : null
-
-  const timestamp =
-    draft.status === 'posted' && draft.posted_at
-      ? new Date(draft.posted_at).toLocaleString()
-      : new Date(draft.created_at).toLocaleString()
+}: DraftCardProps) {
+  const sourceLabels = formatSourceLabels(draft)
+  const xUrl = buildXPostUrl(draft.x_post_id)
 
   return (
     <div className="card bg-base-100 shadow draft-card" data-testid={`draft-card-${draft.id}`}>
       <div className="card-body">
         <div className="flex justify-between text-xs opacity-70 mb-1">
           <span className="badge badge-sm">{draft.status}</span>
-          <span>{timestamp}</span>
+          <span>{formatDraftTimestamp(draft)}</span>
         </div>
 
         <p className="font-medium whitespace-pre-wrap">{draft.text}</p>
 
         <DraftImage draft={draft} onResolved={onImageResolved} />
 
-        {sources.length > 0 && (
-          <div className="text-xs opacity-60 mt-2">
-            Sources:{' '}
-            {sources
-              .map((s: { user?: string; source?: string; source_name?: string; title?: string }) =>
-                s.source_name || s.user || s.source || s.title
-              )
-              .join(', ')}
-          </div>
+        {sourceLabels && (
+          <div className="text-xs opacity-60 mt-2">Sources: {sourceLabels}</div>
         )}
 
         {draft.x_post_id && (
@@ -339,13 +336,13 @@ function DraftCard({
         )}
 
         <div className="card-actions justify-end mt-4 gap-2">
-          {draft.status === 'pending' && (
+          {isPendingDraft(draft) && (
             <button type="button" className="btn btn-ghost btn-sm" onClick={onEdit}>
               Edit
             </button>
           )}
 
-          {draft.status === 'pending' && (
+          {isPendingDraft(draft) && (
             <>
               <button
                 type="button"
@@ -363,7 +360,7 @@ function DraftCard({
           )}
 
           <button type="button" className="btn btn-error btn-sm btn-outline" onClick={onDelete}>
-            {draft.status === 'posted' ? 'Delete Post' : 'Delete Draft'}
+            {isPostedDraft(draft) ? 'Delete Post' : 'Delete Draft'}
           </button>
         </div>
       </div>
