@@ -34,3 +34,17 @@ export const RESEARCH_SOURCE_TYPE = {
   rss: 'rss',
   xGrok: 'x_grok',
 } as const
+
+export const RESEARCH_MODE = {
+  rss: 'rss',
+  x: 'x',
+  both: 'both',
+} as const
+
+export type ResearchMode = (typeof RESEARCH_MODE)[keyof typeof RESEARCH_MODE]
+
+export const RESEARCH_MODE_OPTIONS: { value: ResearchMode; label: string }[] = [
+  { value: RESEARCH_MODE.rss, label: 'RSS' },
+  { value: RESEARCH_MODE.x, label: 'X (Grok)' },
+  { value: RESEARCH_MODE.both, label: 'Both' },
+]

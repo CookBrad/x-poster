@@ -20,15 +20,31 @@ describe('ResearchTab', () => {
     })
   })
 
-  it('renders draft count selector and combined action', () => {
+  it('renders source mode, draft count, and action buttons', () => {
     render(<ResearchTab />)
 
-    const selector = screen.getByTestId('draft-generation-count')
-    expect(selector).toHaveValue('3')
-    expect(selector.querySelectorAll('option')).toHaveLength(10)
-    expect(screen.getByTestId('research-and-generate')).toHaveTextContent(
-      'Research & Generate Posts'
-    )
+    expect(screen.getByTestId('research-mode')).toHaveValue('both')
+    expect(screen.getByTestId('draft-generation-count')).toHaveValue('3')
+    expect(screen.getByTestId('research-button')).toHaveTextContent('Research')
+    expect(screen.getByTestId('generate-button')).toHaveTextContent('Generate')
+    expect(screen.getByTestId('run-all-button')).toHaveTextContent('Run All')
+  })
+
+  it('disables X research when no xAI key is saved', () => {
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'get_setting') return null
+      if (cmd === 'get_latest_research_run') return null
+      return null
+    })
+
+    render(<ResearchTab />)
+
+    fireEvent.change(screen.getByTestId('research-mode'), { target: { value: 'rss' } })
+    expect(screen.getByTestId('research-button')).not.toBeDisabled()
+
+    fireEvent.change(screen.getByTestId('research-mode'), { target: { value: 'x' } })
+    expect(screen.getByTestId('research-button')).toBeDisabled()
+    expect(screen.getByTestId('run-all-button')).toBeDisabled()
   })
 
   it('persists draft count changes', () => {

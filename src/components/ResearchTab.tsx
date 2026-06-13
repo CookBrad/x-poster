@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
-import { RESEARCH_SOURCE_TYPE, SETTING_KEYS } from '../lib/constants'
+import {
+  RESEARCH_MODE,
+  RESEARCH_MODE_OPTIONS,
+  RESEARCH_SOURCE_TYPE,
+  SETTING_KEYS,
+  type ResearchMode,
+} from '../lib/constants'
 import {
   generateDraftsFromLatestResearch,
   getAllHistoricalSources,
@@ -15,11 +21,11 @@ import {
   saveDraftGenerationCount,
 } from '../lib/draftGeneration'
 import { errorMessage } from '../lib/errors'
+import { researchModeLabel, researchModeRequiresXaiKey } from '../lib/researchMode'
 import { formatResearchSourceDate, ResearchSourceCard } from './ResearchSourceCard'
 import { HistoricalSourcesList } from './HistoricalSourcesList'
 
 type ResearchSubTab = 'current' | 'historical'
-type ResearchMode = 'rss' | 'x' | 'both'
 
 export function ResearchTab() {
   const [activeSubTab, setActiveSubTab] = useState<ResearchSubTab>('current')
@@ -28,6 +34,7 @@ export function ResearchTab() {
   const [historicalResetKey, setHistoricalResetKey] = useState(0)
   const [showResetConfirm, setShowResetConfirm] = useState(false)
   const [draftCount, setDraftCount] = useState(loadDraftGenerationCount)
+  const [researchMode, setResearchMode] = useState<ResearchMode>(RESEARCH_MODE.both)
   const [loading, setLoading] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [pipelinePhase, setPipelinePhase] = useState<'idle' | 'research' | 'generate'>('idle')
@@ -48,13 +55,13 @@ export function ResearchTab() {
     }
   }
 
-  const handleRunResearch = async (mode: ResearchMode = 'both') => {
+  const handleRunResearch = async () => {
     setLoading(true)
     setError(null)
     setGenerateSuccess(null)
 
     try {
-      const newRun = await runResearch(mode)
+      const newRun = await runResearch(researchMode)
       setCurrentRun(newRun)
       setActiveSubTab('current')
     } catch (runError: unknown) {
@@ -100,7 +107,7 @@ export function ResearchTab() {
     setPipelinePhase('research')
 
     try {
-      const newRun = await runResearch('both')
+      const newRun = await runResearch(researchMode)
       setCurrentRun(newRun)
       setActiveSubTab('current')
 
@@ -173,6 +180,13 @@ export function ResearchTab() {
   const grokXCount = currentRun?.sources.filter(
     (source) => source.source_type === RESEARCH_SOURCE_TYPE.xGrok
   ).length
+
+  const researchNeedsXaiKey = researchModeRequiresXaiKey(researchMode)
+  const researchDisabled = isBusy || (researchNeedsXaiKey && !hasXaiKey)
+  const generateDisabled = isBusy || !hasXaiKey || !currentRun
+  const runAllDisabled = isBusy || !hasXaiKey
+
+  const activeResearchLabel = researchModeLabel(researchMode)
 
   return (
     <div>
@@ -263,8 +277,27 @@ export function ResearchTab() {
         <div>
           <div className="card bg-base-200/60 mb-4">
             <div className="card-body py-4 gap-4">
-              <div className="flex flex-wrap items-end justify-between gap-4">
-                <label className="form-control w-full max-w-xs">
+              <div className="flex flex-wrap items-end gap-4">
+                <label className="form-control w-full max-w-[11rem]">
+                  <div className="label py-0 pb-1">
+                    <span className="label-text font-medium">Research sources</span>
+                  </div>
+                  <select
+                    className="select select-bordered select-sm w-full"
+                    value={researchMode}
+                    onChange={(event) => setResearchMode(event.target.value as ResearchMode)}
+                    disabled={isBusy}
+                    data-testid="research-mode"
+                  >
+                    {RESEARCH_MODE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="form-control w-full max-w-[11rem]">
                   <div className="label py-0 pb-1">
                     <span className="label-text font-medium">Posts to generate</span>
                   </div>
@@ -283,68 +316,58 @@ export function ResearchTab() {
                   </select>
                 </label>
 
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={() => void handleResearchAndGenerate()}
-                  disabled={isBusy || !hasXaiKey}
-                  title={!hasXaiKey ? 'xAI key required for research and draft generation' : ''}
-                  data-testid="research-and-generate"
-                >
-                  {isPipelineBusy
-                    ? pipelinePhase === 'research'
-                      ? 'Researching…'
-                      : 'Generating posts…'
-                    : 'Research & Generate Posts'}
-                </button>
-              </div>
+                <div className="flex flex-wrap gap-2 ml-auto">
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-outline"
+                    onClick={() => void handleRunResearch()}
+                    disabled={researchDisabled}
+                    title={
+                      researchNeedsXaiKey && !hasXaiKey
+                        ? 'xAI key required for X research'
+                        : `Research ${activeResearchLabel} sources`
+                    }
+                    data-testid="research-button"
+                  >
+                    {loading ? 'Researching…' : 'Research'}
+                  </button>
 
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  className="btn btn-sm btn-outline"
-                  onClick={() => void handleRunResearch('rss')}
-                  disabled={isBusy}
-                >
-                  Run RSS Only
-                </button>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-warning"
+                    onClick={() => void handleGenerateDrafts()}
+                    disabled={generateDisabled}
+                    title={
+                      !hasXaiKey
+                        ? 'xAI key required'
+                        : !currentRun
+                          ? 'Run research first'
+                          : `Generate ${draftCount} post(s) from latest research`
+                    }
+                    data-testid="generate-button"
+                  >
+                    {generating ? 'Generating…' : 'Generate'}
+                  </button>
 
-                <button
-                  type="button"
-                  className="btn btn-sm btn-outline"
-                  onClick={() => void handleRunResearch('x')}
-                  disabled={isBusy || !hasXaiKey}
-                  title={!hasXaiKey ? 'xAI key required for Grok X research' : ''}
-                >
-                  Run X Only (Grok)
-                </button>
-
-                <button
-                  type="button"
-                  className="btn btn-sm btn-outline"
-                  onClick={() => void handleRunResearch('both')}
-                  disabled={isBusy || !hasXaiKey}
-                  title={!hasXaiKey ? 'xAI key required for Grok X research' : ''}
-                >
-                  Run Both
-                </button>
-
-                <button
-                  type="button"
-                  className="btn btn-sm btn-warning"
-                  onClick={() => void handleGenerateDrafts()}
-                  disabled={isBusy || !hasXaiKey || !currentRun}
-                  title={
-                    !hasXaiKey
-                      ? 'xAI key required'
-                      : !currentRun
-                        ? 'Run research first'
-                        : `Generate ${draftCount} draft post(s) from latest research`
-                  }
-                  data-testid="generate-drafts"
-                >
-                  {generating ? 'Generating drafts…' : 'Generate Drafts → Queue'}
-                </button>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-primary"
+                    onClick={() => void handleResearchAndGenerate()}
+                    disabled={runAllDisabled}
+                    title={
+                      !hasXaiKey
+                        ? 'xAI key required'
+                        : `Research ${activeResearchLabel}, then generate ${draftCount} post(s)`
+                    }
+                    data-testid="run-all-button"
+                  >
+                    {isPipelineBusy
+                      ? pipelinePhase === 'research'
+                        ? 'Researching…'
+                        : 'Generating…'
+                      : 'Run All'}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -354,13 +377,13 @@ export function ResearchTab() {
               <span className="loading loading-spinner loading-lg text-primary" />
               <p className="mt-3 font-medium">
                 {pipelinePhase === 'generate' || generating
-                  ? `Generating ${draftCount} draft post(s)…`
-                  : 'Researching sources…'}
+                  ? `Generating ${draftCount} post(s)…`
+                  : `Researching ${activeResearchLabel} sources…`}
               </p>
               <p className="text-xs opacity-60 mt-1">
                 {pipelinePhase === 'generate' || generating
                   ? 'Writing insight-focused posts from the latest research run'
-                  : 'Querying RSS + Grok for high-signal Musk company updates'}
+                  : 'Collecting high-signal Musk company updates'}
               </p>
             </div>
           )}
@@ -420,7 +443,7 @@ export function ResearchTab() {
             </div>
           ) : (
             <div className="alert alert-info">
-              No research run yet. Click "Run Research Now" to start.
+              No research run yet. Click Research to start.
               <br />
               <span className="text-xs">
                 Note: X posts come via Grok — make sure your xAI API key is configured in Settings.
