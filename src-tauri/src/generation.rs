@@ -32,6 +32,7 @@ CRITICAL RULES:
    - Tesla topics (deliveries, earnings, valuation, FSD/Robotaxi, energy, etc.): include $TSLA.
    - SpaceX topics (Starship, Starlink, Falcon, launches, valuation/catalyst read-through): include $SPCX.
    - Use the cashtag(s) that match the company focus. If both are materially relevant, include both.
+   - Do NOT add $SPCX to Tesla-only posts (Cybertruck, FSD, Robotaxi, deliveries, energy, etc.) — "launch" in a product sense is not SpaceX.
    - xAI, Neuralink, and Boring Company have no standard cashtag — do not invent tickers for them.
    - Place cashtags naturally (often at the end). Do not spam unrelated tags.
 
@@ -142,35 +143,57 @@ pub fn relates_to_tesla_stock(text: &str, sources: &[ResearchSource]) -> bool {
     haystack_contains_any(&build_topic_haystack(text, sources), TESLA_SIGNALS)
 }
 
-/// Whether this draft topic warrants a SpaceX cashtag based on post text and linked sources.
-pub fn relates_to_spacex_stock(text: &str, sources: &[ResearchSource]) -> bool {
+/// Whether the draft text itself is about SpaceX (not inferred from source noise).
+/// Sources are excluded because Tesla articles often say "launch" for product rollouts.
+pub fn relates_to_spacex_stock(text: &str) -> bool {
     const SPACEX_SIGNALS: &[&str] = &[
         "spacex",
-        "spcx",
         "starship",
         "starlink",
+        "falcon 9",
+        "falcon9",
+        "falcon heavy",
         "falcon",
         "dragon",
-        "raptor",
-        "booster",
         "super heavy",
-        "launch",
-        "launches",
+        "mechazilla",
+        "booster catch",
+        "booster landing",
     ];
 
-    haystack_contains_any(&build_topic_haystack(text, sources), SPACEX_SIGNALS)
+    let topic_text = text_without_cashtags(text);
+    haystack_contains_any(&topic_text.to_lowercase(), SPACEX_SIGNALS)
+}
+
+fn text_without_cashtags(text: &str) -> String {
+    remove_disallowed_cashtags(text, &[])
 }
 
 /// Cashtags to append for this draft, in display order.
 pub fn stock_tags_for_draft(text: &str, sources: &[ResearchSource]) -> Vec<&'static str> {
+    let topic_text = text_without_cashtags(text);
     let mut tags = Vec::new();
-    if relates_to_tesla_stock(text, sources) {
+    if relates_to_tesla_stock(&topic_text, sources) {
         tags.push(STOCK_TAG_TSLA);
     }
-    if relates_to_spacex_stock(text, sources) {
+    if relates_to_spacex_stock(&topic_text) {
         tags.push(STOCK_TAG_SPCX);
     }
     tags
+}
+
+/// Remove cashtags that do not belong on this draft (e.g. stray $SPCX on a Tesla-only post).
+pub fn remove_disallowed_cashtags(text: &str, allowed_tags: &[&str]) -> String {
+    text.split_whitespace()
+        .filter(|word| {
+            let upper = word.to_uppercase();
+            match upper.as_str() {
+                "$TSLA" | "$SPCX" => allowed_tags.iter().any(|tag| upper == *tag),
+                _ => true,
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Append missing cashtags while respecting the 280-character limit.
@@ -198,7 +221,8 @@ pub fn ensure_stock_tags(text: &str, tags: &[&str]) -> String {
 pub fn finalize_draft_text(text: &str, sources: &[ResearchSource]) -> String {
     let normalized = text.trim().to_string();
     let tags = stock_tags_for_draft(&normalized, sources);
-    ensure_stock_tags(&normalized, &tags)
+    let cleaned = remove_disallowed_cashtags(&normalized, &tags);
+    ensure_stock_tags(&cleaned, &tags)
 }
 
 pub fn parse_generated_drafts(content: &str) -> Result<Vec<GeneratedDraftItem>, String> {
@@ -416,12 +440,36 @@ mod tests {
     fn test_relates_to_spacex_stock_detects_spacex_topics() {
         assert!(relates_to_spacex_stock(
             "Starship catch success changes launch economics",
-            &[]
         ));
         assert!(!relates_to_spacex_stock(
             "Robotaxi geofence expanded in Austin",
-            &[]
         ));
+    }
+
+    #[test]
+    fn test_cybertruck_draft_does_not_get_spcx_from_source_launch_noise() {
+        let sources = vec![ResearchSource {
+            id: "1".into(),
+            title: "Smart Summon launch on Cybertruck".into(),
+            content: "Feature launch rolls out to Cybertruck owners this week".into(),
+            url: "https://example.com".into(),
+            published_at: None,
+            source_name: "Not a Tesla App".into(),
+            source_type: "rss".into(),
+            retweet_count: None,
+            like_count: None,
+            reply_count: None,
+            quote_count: None,
+            original_id: None,
+            media_url: None,
+        }];
+        let draft = "Actually Smart Summon arriving on Cybertruck via v14.3.4 and steer-by-wire extends \
+            low-speed autonomy to a high-volume unique platform. This diversifies real-world edge cases \
+            $TSLA collects, accelerating robotaxi robustness across vehicle form factors. $SPCX";
+
+        let result = finalize_draft_text(draft, &sources);
+        assert!(result.contains("$TSLA"));
+        assert!(!result.to_uppercase().contains("$SPCX"));
     }
 
     #[test]
