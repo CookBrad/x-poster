@@ -28,13 +28,14 @@ CRITICAL RULES:
    - Avoid bearish pile-on, doom narratives, cynical dunking, or "Tesla is doomed" angles.
    - You may acknowledge risks, but the net framing should be optimistic about these companies' trajectories and leadership.
 
-3. STOCK TAGS WHEN MARKET-RELEVANT:
-   - Tesla topics (deliveries, earnings, valuation, FSD/Robotaxi, energy, etc.): include $TSLA.
-   - SpaceX topics (Starship, Starlink, Falcon, launches, valuation/catalyst read-through): include $SPCX.
-   - Use the cashtag(s) that match the company focus. If both are materially relevant, include both.
+3. STOCK TAGS WHEN MARKET-RELEVANT (ONE CASHTAG MAX):
+   - Include at most ONE cashtag per post — never use both $TSLA and $SPCX together.
+   - Tesla topics (deliveries, earnings, valuation, FSD/Robotaxi, energy, etc.): use $TSLA.
+   - SpaceX topics (Starship, Starlink, Falcon, launches, valuation/catalyst read-through): use $SPCX.
+   - If a post could fit both, pick the single tag that best matches the main focus of the post.
    - Do NOT add $SPCX to Tesla-only posts (Cybertruck, FSD, Robotaxi, deliveries, energy, etc.) — "launch" in a product sense is not SpaceX.
    - xAI, Neuralink, and Boring Company have no standard cashtag — do not invent tickers for them.
-   - Place cashtags naturally (often at the end). Do not spam unrelated tags.
+   - Place the cashtag naturally (often at the end). Do not spam unrelated tags.
 
 4. INLINE ATTRIBUTION:
    - X/Twitter sources (x_grok): attribute with an @ mention (e.g. "As @SawyerMerritt noted...").
@@ -54,7 +55,7 @@ BAD (bearish): "Another Robotaxi delay — Tesla keeps overpromising." (negative
 
 Return ONLY a JSON array (no markdown fences), each object:
 {
-  "text": "the tweet/post text (include $TSLA and/or $SPCX when stock-relevant)",
+  "text": "the tweet/post text (include at most one of $TSLA or $SPCX when stock-relevant)",
   "rationale": "1 sentence on what useful insight you added beyond the source",
   "primary_author": "username without @ for the main source this draft draws from, or null for RSS-only",
   "primary_source_index": 3
@@ -99,7 +100,7 @@ pub fn build_generation_user_prompt(
          Requirements for each draft:\n\
          - Add genuine insight (implications, read-through, what the market or observers miss) — never just repeat the source.\n\
          - Frame constructively and bullishly toward Elon and his companies while staying factual.\n\
-         - Include $TSLA for Tesla/market topics and $SPCX for SpaceX/market topics.\n\n\
+         - Include at most one cashtag ($TSLA or $SPCX) when stock-relevant.\n\n\
          ## Sources\n{}\n\n\
          ## User's recent posted drafts (DO NOT repeat these angles)\n{}\n",
         count,
@@ -172,17 +173,31 @@ fn text_without_cashtags(text: &str) -> String {
     remove_disallowed_cashtags(text, &[])
 }
 
-/// Cashtags to append for this draft, in display order.
-pub fn stock_tags_for_draft(text: &str, sources: &[ResearchSource]) -> Vec<&'static str> {
+/// The single best cashtag for this draft, if any.
+pub fn preferred_stock_tag(text: &str, sources: &[ResearchSource]) -> Option<&'static str> {
     let topic_text = text_without_cashtags(text);
-    let mut tags = Vec::new();
-    if relates_to_tesla_stock(&topic_text, sources) {
-        tags.push(STOCK_TAG_TSLA);
+    let tesla = relates_to_tesla_stock(&topic_text, sources);
+    let spacex = relates_to_spacex_stock(&topic_text);
+
+    match (tesla, spacex) {
+        (false, false) => None,
+        (true, false) => Some(STOCK_TAG_TSLA),
+        (false, true) => Some(STOCK_TAG_SPCX),
+        (true, true) => {
+            if relates_to_spacex_stock(&topic_text) {
+                Some(STOCK_TAG_SPCX)
+            } else {
+                Some(STOCK_TAG_TSLA)
+            }
+        }
     }
-    if relates_to_spacex_stock(&topic_text) {
-        tags.push(STOCK_TAG_SPCX);
-    }
-    tags
+}
+
+/// Cashtag to append for this draft, if any (at most one).
+pub fn stock_tags_for_draft(text: &str, sources: &[ResearchSource]) -> Vec<&'static str> {
+    preferred_stock_tag(text, sources)
+        .map(|tag| vec![tag])
+        .unwrap_or_default()
 }
 
 /// Remove cashtags that do not belong on this draft (e.g. stray $SPCX on a Tesla-only post).
@@ -199,26 +214,28 @@ pub fn remove_disallowed_cashtags(text: &str, allowed_tags: &[&str]) -> String {
         .join(" ")
 }
 
-/// Append missing cashtags while respecting the 280-character limit.
+/// Append the single allowed cashtag while respecting the 280-character limit.
 pub fn ensure_stock_tags(text: &str, tags: &[&str]) -> String {
     let mut result = text.trim().to_string();
     if result.is_empty() {
         return result;
     }
 
-    for tag in tags {
-        let upper = result.to_uppercase();
-        if upper.contains(tag) {
-            continue;
-        }
+    let Some(tag) = tags.first() else {
+        return result;
+    };
 
-        let candidate = format!("{result} {tag}");
-        if candidate.len() <= 280 {
-            result = candidate;
-        }
+    let upper = result.to_uppercase();
+    if upper.contains(tag) {
+        return result;
     }
 
-    result
+    let candidate = format!("{result} {tag}");
+    if candidate.len() <= 280 {
+        candidate
+    } else {
+        result
+    }
 }
 
 fn is_x_source(source: &ResearchSource) -> bool {
@@ -513,6 +530,7 @@ mod tests {
         assert!(prompt.contains("$SPCX"));
         assert!(prompt.contains("BULLISH"));
         assert!(prompt.contains("NOT REGURGITATION"));
+        assert!(prompt.contains("ONE CASHTAG MAX"));
     }
 
     #[test]
@@ -612,6 +630,25 @@ mod tests {
             format_source_attribution(&source),
             "source: Not A Tesla App".to_string()
         );
+    }
+
+    #[test]
+    fn test_stock_tags_for_draft_returns_at_most_one_tag() {
+        let text = "Starship catch success while Tesla deliveries accelerate";
+        let tags = stock_tags_for_draft(text, &[]);
+        assert_eq!(tags.len(), 1);
+        assert_eq!(tags[0], STOCK_TAG_SPCX);
+    }
+
+    #[test]
+    fn test_finalize_draft_text_keeps_only_one_cashtag_when_both_present() {
+        let result = finalize_draft_text(
+            "Starship cadence improves launch economics $TSLA $SPCX",
+            &[],
+        );
+        let upper = result.to_uppercase();
+        assert!(upper.contains("$SPCX"));
+        assert!(!upper.contains("$TSLA"));
     }
 
     #[test]
