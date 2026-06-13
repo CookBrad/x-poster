@@ -36,12 +36,10 @@ CRITICAL RULES:
    - xAI, Neuralink, and Boring Company have no standard cashtag — do not invent tickers for them.
    - Place cashtags naturally (often at the end). Do not spam unrelated tags.
 
-4. SOURCE CREDIT (MANDATORY — EVERY POST):
-   - Every post MUST credit the original source it draws from. No exceptions.
-   - X/Twitter sources (x_grok): credit with an @ mention (e.g. "As @SawyerMerritt noted...").
-   - RSS/news sources: credit as "source: Publication Name" (e.g. "Per source: Not A Tesla App, ...") — never use @ for RSS publications.
-   - Place credit at the start of the post when possible. Never use parenthetical handles like (SawyerMerritt).
-   - A post without clear source credit fails this task.
+4. INLINE ATTRIBUTION:
+   - X/Twitter sources (x_grok): attribute with an @ mention (e.g. "As @SawyerMerritt noted...").
+   - RSS/news sources: attribute as "source: Publication Name" (e.g. "Per source: Not A Tesla App, ...") — never use @ for RSS publications.
+   - Never use parenthetical handles like (SawyerMerritt).
 
 5. Avoid repeating themes from the user's RECENT POSTS list below — find a different angle.
 6. Non-political, company/tech focus only. No partisan takes.
@@ -99,7 +97,6 @@ pub fn build_generation_user_prompt(
     format!(
         "Generate exactly {} draft post(s) from these research sources.\n\n\
          Requirements for each draft:\n\
-         - Credit the original source in every post using the attribution shown for that source below (MANDATORY).\n\
          - Add genuine insight (implications, read-through, what the market or observers miss) — never just repeat the source.\n\
          - Frame constructively and bullishly toward Elon and his companies while staying factual.\n\
          - Include $TSLA for Tesla/market topics and $SPCX for SpaceX/market topics.\n\n\
@@ -241,78 +238,6 @@ pub fn format_source_attribution(source: &ResearchSource) -> String {
     }
 }
 
-/// Whether the draft text already credits this source.
-pub fn draft_credits_source(text: &str, source: &ResearchSource) -> bool {
-    let lower = text.to_lowercase();
-    let name = source.source_name.trim().trim_start_matches('@');
-    if name.is_empty() {
-        return false;
-    }
-
-    if is_x_source(source) {
-        return lower.contains(&format!("@{name}").to_lowercase())
-            || lower.contains(&format!("({name})").to_lowercase())
-            || lower.contains(&format!("({})", name.to_lowercase()));
-    }
-
-    lower.contains(&format!("source: {name}").to_lowercase())
-}
-
-fn format_attribution_lead(source: &ResearchSource) -> String {
-    let name = source.source_name.trim().trim_start_matches('@');
-    if is_x_source(source) {
-        format!("As @{name} noted, ")
-    } else {
-        format!("Per source: {name}, ")
-    }
-}
-
-fn trim_to_tweet_limit(text: &str) -> String {
-    if text.chars().count() <= 280 {
-        return text.trim().to_string();
-    }
-    text.chars().take(280).collect::<String>().trim_end().to_string()
-}
-
-/// Prepend source credit when Grok omitted attribution for the primary source.
-pub fn ensure_source_attribution(text: &str, sources: &[ResearchSource]) -> String {
-    if sources.is_empty() {
-        return text.trim().to_string();
-    }
-
-    let primary = crate::x_media::match_primary_source(text, sources)
-        .or_else(|| sources.first())
-        .expect("sources non-empty");
-
-    if draft_credits_source(text, primary) {
-        return text.trim().to_string();
-    }
-
-    let lead = format_attribution_lead(primary);
-    let body = text.trim();
-    let combined = format!("{lead}{body}");
-    if combined.chars().count() <= 280 {
-        return combined;
-    }
-
-    let minimal = if is_x_source(primary) {
-        let name = primary.source_name.trim().trim_start_matches('@');
-        format!("@{name} ")
-    } else {
-        let name = primary.source_name.trim();
-        format!("source: {name} — ")
-    };
-
-    let mut result = format!("{minimal}{body}");
-    if result.chars().count() > 280 {
-        let available = 280usize.saturating_sub(minimal.chars().count());
-        let truncated: String = body.chars().take(available).collect();
-        result = format!("{minimal}{}", truncated.trim_end());
-    }
-
-    trim_to_tweet_limit(&result)
-}
-
 /// Replace mistaken @ mentions for RSS publications with "source: Name".
 pub fn normalize_rss_attribution(text: &str, sources: &[ResearchSource]) -> String {
     let mut result = text.to_string();
@@ -351,10 +276,9 @@ pub fn normalize_rss_attribution(text: &str, sources: &[ResearchSource]) -> Stri
 
 pub fn finalize_draft_text(text: &str, sources: &[ResearchSource]) -> String {
     let normalized = normalize_rss_attribution(text.trim(), sources);
-    let attributed = ensure_source_attribution(&normalized, sources);
-    let tags = stock_tags_for_draft(&attributed, sources);
-    let cleaned = remove_disallowed_cashtags(&attributed, &tags);
-    trim_to_tweet_limit(&ensure_stock_tags(&cleaned, &tags))
+    let tags = stock_tags_for_draft(&normalized, sources);
+    let cleaned = remove_disallowed_cashtags(&normalized, &tags);
+    ensure_stock_tags(&cleaned, &tags)
 }
 
 pub fn parse_generated_drafts(content: &str) -> Result<Vec<GeneratedDraftItem>, String> {
@@ -554,83 +478,6 @@ mod tests {
         assert!(prompt.contains("$SPCX"));
         assert!(prompt.contains("BULLISH"));
         assert!(prompt.contains("NOT REGURGITATION"));
-        assert!(prompt.contains("SOURCE CREDIT (MANDATORY"));
-    }
-
-    fn sample_x_source(author: &str) -> ResearchSource {
-        ResearchSource {
-            id: "1".into(),
-            title: "Robotaxi update".into(),
-            content: "Geofence expanded".into(),
-            url: "https://x.com/example/status/1".into(),
-            published_at: None,
-            source_name: format!("@{author}"),
-            source_type: "x_grok".into(),
-            retweet_count: None,
-            like_count: None,
-            reply_count: None,
-            quote_count: None,
-            original_id: None,
-            media_url: None,
-        }
-    }
-
-    fn sample_rss_source(name: &str) -> ResearchSource {
-        ResearchSource {
-            id: "2".into(),
-            title: "Feature rollout".into(),
-            content: "Smart Summon expands".into(),
-            url: "https://example.com/article".into(),
-            published_at: None,
-            source_name: name.into(),
-            source_type: "rss".into(),
-            retweet_count: None,
-            like_count: None,
-            reply_count: None,
-            quote_count: None,
-            original_id: None,
-            media_url: None,
-        }
-    }
-
-    #[test]
-    fn test_ensure_source_attribution_adds_x_credit_when_missing() {
-        let sources = vec![sample_x_source("SawyerMerritt")];
-        let result = ensure_source_attribution(
-            "Austin Robotaxi geofence widened again — real-world miles are the read-through for $TSLA",
-            &sources,
-        );
-        assert!(result.starts_with("As @SawyerMerritt noted,"));
-    }
-
-    #[test]
-    fn test_ensure_source_attribution_adds_rss_credit_when_missing() {
-        let sources = vec![sample_rss_source("Not A Tesla App")];
-        let result = ensure_source_attribution(
-            "Smart Summon on Cybertruck expands the edge-case dataset for $TSLA",
-            &sources,
-        );
-        assert!(result.starts_with("Per source: Not A Tesla App,"));
-    }
-
-    #[test]
-    fn test_ensure_source_attribution_skips_when_credit_present() {
-        let sources = vec![sample_x_source("SawyerMerritt")];
-        let original = "As @SawyerMerritt noted, geofence widened — miles matter for $TSLA";
-        let result = ensure_source_attribution(original, &sources);
-        assert_eq!(result, original);
-    }
-
-    #[test]
-    fn test_finalize_draft_text_injects_credit_for_uncredited_post() {
-        let sources = vec![sample_rss_source("Teslarati")];
-        let result = finalize_draft_text(
-            "Energy attach rates are the margin story bears keep missing",
-            &sources,
-        );
-        assert!(result.contains("source: Teslarati"));
-        assert!(result.contains("$TSLA"));
-        assert!(result.chars().count() <= 280);
     }
 
     #[test]
