@@ -1,8 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import ApiKeySettings from './components/ApiKeySettings'
-import QueueTab from './components/QueueTab'
-import HistoryTab from './components/HistoryTab'
+import PostsTab from './components/PostsTab'
 import XCredentialsSettings from './components/XCredentialsSettings'
 import {
   runResearch,
@@ -14,10 +13,10 @@ import {
   type HistoricalResearchSource,
 } from './lib/db'
 
-type Tab = 'queue' | 'research' | 'settings' | 'history'
+type Tab = 'posts' | 'research' | 'settings'
 
 function App() {
-  const [activeTab, setActiveTab] = useState<Tab>('queue')
+  const [activeTab, setActiveTab] = useState<Tab>('posts')
 
   // Aggressively ensure dark colorful theme (synthwave) is applied
   useEffect(() => {
@@ -70,10 +69,10 @@ function App() {
       {/* Tabs (daisyUI) */}
       <div className="tabs tabs-bordered tabs-lg bg-base-100 border-b border-primary/20 px-4 pt-2">
         <a
-          className={`tab ${activeTab === 'queue' ? 'tab-active' : ''}`}
-          onClick={() => setActiveTab('queue')}
+          className={`tab ${activeTab === 'posts' ? 'tab-active' : ''}`}
+          onClick={() => setActiveTab('posts')}
         >
-          Queue
+          Posts
         </a>
         <a
           className={`tab ${activeTab === 'research' ? 'tab-active' : ''}`}
@@ -87,19 +86,11 @@ function App() {
         >
           Settings
         </a>
-        <a
-          className={`tab ${activeTab === 'history' ? 'tab-active' : ''}`}
-          onClick={() => setActiveTab('history')}
-        >
-          History
-        </a>
       </div>
 
       {/* Content area */}
       <div className="p-6 max-w-6xl mx-auto">
-        {activeTab === 'queue' && (
-          <QueueTab />
-        )}
+        {activeTab === 'posts' && <PostsTab />}
 
         {activeTab === 'research' && (
           <ResearchTab />
@@ -128,7 +119,7 @@ function App() {
           </div>
         )}
 
-        {activeTab === 'history' && <HistoryTab />}
+
       </div>
 
       <footer className="text-center text-xs opacity-50 py-6">
@@ -192,7 +183,7 @@ function ResearchTab() {
     try {
       const drafts = await generateDraftsFromLatestResearch(3);
       setGenerateSuccess(
-        `Generated ${drafts.length} draft(s) with fresh-take prompts. Open the Queue tab to review.`
+        `Generated ${drafts.length} draft(s) with fresh-take prompts. Open the Posts tab to review.`
       );
     } catch (e: unknown) {
       console.error(e);

@@ -10,7 +10,10 @@ import {
 import { DraftEditModal } from './DraftEditModal'
 import { DraftImage } from './DraftImage'
 
-export default function QueueTab() {
+type PostsSubview = 'pending' | 'posted'
+
+export default function PostsTab() {
+  const [subTab, setSubTab] = useState<PostsSubview>('pending')
   const [drafts, setDrafts] = useState<Draft[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -25,7 +28,7 @@ export default function QueueTab() {
       setError(null)
     } catch (e: unknown) {
       console.error(e)
-      setError('Failed to load drafts from database')
+      setError('Failed to load posts from database')
     } finally {
       setLoading(false)
     }
@@ -34,6 +37,10 @@ export default function QueueTab() {
   useEffect(() => {
     void loadDrafts()
   }, [loadDrafts])
+
+  const visibleDrafts = drafts.filter((d) =>
+    subTab === 'pending' ? d.status === 'pending' : d.status === 'posted'
+  )
 
   const handleCreateTestDraft = async () => {
     try {
@@ -45,6 +52,7 @@ export default function QueueTab() {
         ]),
         image_url: null,
       })
+      setSubTab('pending')
       await loadDrafts()
     } catch (e: unknown) {
       alert('Failed to create test draft: ' + (e instanceof Error ? e.message : e))
@@ -62,9 +70,12 @@ export default function QueueTab() {
 
   const handleDelete = async (draft: Draft) => {
     const isPosted = draft.status === 'posted'
-    if (isPosted && !window.confirm(
-      'Delete this posted item from your local history?\n\n(This will NOT delete the tweet on X)'
-    )) {
+    if (
+      isPosted &&
+      !window.confirm(
+        'Delete this posted item from your local history?\n\n(This will NOT delete the tweet on X)'
+      )
+    ) {
       return
     }
 
@@ -84,6 +95,7 @@ export default function QueueTab() {
     try {
       await postDraftToX(draft.id)
       await loadDrafts()
+      setSubTab('posted')
     } catch (e: unknown) {
       setError('Failed to post to X: ' + (e instanceof Error ? e.message : e))
     } finally {
@@ -99,12 +111,19 @@ export default function QueueTab() {
     )
   }
 
+  const pendingCount = drafts.filter((d) => d.status === 'pending').length
+  const postedCount = drafts.filter((d) => d.status === 'posted').length
+
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-2xl font-semibold">Draft Queue</h2>
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <h2 className="text-2xl font-semibold">Posts</h2>
         <div className="flex gap-2">
-          <button type="button" className="btn btn-primary btn-sm" onClick={() => void handleCreateTestDraft()}>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={() => void handleCreateTestDraft()}
+          >
             + Create Test Draft
           </button>
           <button type="button" className="btn btn-outline btn-sm" onClick={() => void loadDrafts()}>
@@ -113,19 +132,42 @@ export default function QueueTab() {
         </div>
       </div>
 
+      <div className="tabs tabs-boxed bg-base-100 mb-4 w-fit" data-testid="posts-subtabs">
+        <button
+          type="button"
+          className={`tab ${subTab === 'pending' ? 'tab-active' : ''}`}
+          onClick={() => setSubTab('pending')}
+          data-testid="posts-subtab-pending"
+        >
+          Pending {pendingCount > 0 ? `(${pendingCount})` : ''}
+        </button>
+        <button
+          type="button"
+          className={`tab ${subTab === 'posted' ? 'tab-active' : ''}`}
+          onClick={() => setSubTab('posted')}
+          data-testid="posts-subtab-posted"
+        >
+          Posted {postedCount > 0 ? `(${postedCount})` : ''}
+        </button>
+      </div>
+
       {error && (
         <div className="alert alert-error mb-4">
           <span>{error}</span>
         </div>
       )}
 
-      {drafts.length === 0 ? (
-        <div className="alert alert-info">
-          <span>No drafts yet. Run research and generate drafts, or create a test draft.</span>
+      {visibleDrafts.length === 0 ? (
+        <div className="alert alert-info" data-testid="posts-empty">
+          <span>
+            {subTab === 'pending'
+              ? 'No pending posts. Run research and generate drafts, or create a test draft.'
+              : 'No posted items yet. Approve a pending post to publish it to X.'}
+          </span>
         </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
-          {drafts.map((draft) => (
+          {visibleDrafts.map((draft) => (
             <DraftCard
               key={draft.id}
               draft={draft}
@@ -179,16 +221,22 @@ function DraftCard({
     sources = []
   }
 
-  const xUrl = draft.x_post_id && !draft.x_post_id.startsWith('sim_')
-    ? `https://x.com/i/web/status/${draft.x_post_id}`
-    : null
+  const xUrl =
+    draft.x_post_id && !draft.x_post_id.startsWith('sim_')
+      ? `https://x.com/i/web/status/${draft.x_post_id}`
+      : null
+
+  const timestamp =
+    draft.status === 'posted' && draft.posted_at
+      ? new Date(draft.posted_at).toLocaleString()
+      : new Date(draft.created_at).toLocaleString()
 
   return (
     <div className="card bg-base-100 shadow draft-card" data-testid={`draft-card-${draft.id}`}>
       <div className="card-body">
         <div className="flex justify-between text-xs opacity-70 mb-1">
           <span className="badge badge-sm">{draft.status}</span>
-          <span>{new Date(draft.created_at).toLocaleString()}</span>
+          <span>{timestamp}</span>
         </div>
 
         <p className="font-medium whitespace-pre-wrap">{draft.text}</p>
@@ -209,8 +257,8 @@ function DraftCard({
         {draft.x_post_id && (
           <div className="text-xs text-success mt-1">
             {xUrl ? (
-              <a href={xUrl} target="_blank" rel="noopener noreferrer" className="link">
-                Posted: {draft.x_post_id}
+              <a href={xUrl} target="_blank" rel="noopener noreferrer" className="link link-primary">
+                View on X →
               </a>
             ) : (
               <>Posted as: {draft.x_post_id}</>
@@ -219,9 +267,11 @@ function DraftCard({
         )}
 
         <div className="card-actions justify-end mt-4 gap-2">
-          <button type="button" className="btn btn-ghost btn-sm" onClick={onEdit}>
-            Edit
-          </button>
+          {draft.status === 'pending' && (
+            <button type="button" className="btn btn-ghost btn-sm" onClick={onEdit}>
+              Edit
+            </button>
+          )}
 
           {draft.status === 'pending' && (
             <>
