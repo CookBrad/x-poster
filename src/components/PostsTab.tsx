@@ -132,10 +132,10 @@ export default function PostsTab() {
         </div>
       </div>
 
-      <div className="tabs tabs-boxed bg-base-100 mb-4 w-fit" data-testid="posts-subtabs">
+      <div className="flex gap-4 mb-4" data-testid="posts-subtabs">
         <button
           type="button"
-          className={`tab ${subTab === 'pending' ? 'tab-active' : ''}`}
+          className={`btn btn-sm min-w-[7rem] ${subTab === 'pending' ? 'btn-primary' : 'btn-outline'}`}
           onClick={() => setSubTab('pending')}
           data-testid="posts-subtab-pending"
         >
@@ -143,7 +143,7 @@ export default function PostsTab() {
         </button>
         <button
           type="button"
-          className={`tab ${subTab === 'posted' ? 'tab-active' : ''}`}
+          className={`btn btn-sm min-w-[7rem] ${subTab === 'posted' ? 'btn-primary' : 'btn-outline'}`}
           onClick={() => setSubTab('posted')}
           data-testid="posts-subtab-posted"
         >

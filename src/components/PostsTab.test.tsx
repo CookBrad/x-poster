@@ -94,7 +94,7 @@ describe('PostsTab', () => {
 
     await waitFor(() => {
       expect(mockPostDraftToX).toHaveBeenCalledWith('draft-1')
-      expect(screen.getByTestId('posts-subtab-posted')).toHaveClass('tab-active')
+      expect(screen.getByTestId('posts-subtab-posted')).toHaveClass('btn-primary')
     })
   })
 })
