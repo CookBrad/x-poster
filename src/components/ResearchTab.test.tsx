@@ -20,10 +20,12 @@ describe('ResearchTab', () => {
     })
   })
 
-  it('renders adjustable draft count and combined action', () => {
+  it('renders draft count selector and combined action', () => {
     render(<ResearchTab />)
 
-    expect(screen.getByTestId('draft-generation-count')).toHaveValue(3)
+    const selector = screen.getByTestId('draft-generation-count')
+    expect(selector).toHaveValue('3')
+    expect(selector.querySelectorAll('option')).toHaveLength(10)
     expect(screen.getByTestId('research-and-generate')).toHaveTextContent(
       'Research & Generate Posts'
     )
@@ -36,7 +38,7 @@ describe('ResearchTab', () => {
       target: { value: '7' },
     })
 
-    expect(screen.getByTestId('draft-generation-count')).toHaveValue(7)
+    expect(screen.getByTestId('draft-generation-count')).toHaveValue('7')
     expect(localStorage.getItem('draft_generation_count')).toBe('7')
   })
 })

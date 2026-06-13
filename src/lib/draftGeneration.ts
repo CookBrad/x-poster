@@ -2,7 +2,16 @@ import {
   clampDraftCount,
   DRAFT_COUNT_STORAGE_KEY,
   DEFAULT_DRAFT_GENERATION_COUNT,
+  MAX_DRAFT_GENERATION_COUNT,
+  MIN_DRAFT_GENERATION_COUNT,
 } from './constants'
+
+export function draftCountOptions(): number[] {
+  return Array.from(
+    { length: MAX_DRAFT_GENERATION_COUNT - MIN_DRAFT_GENERATION_COUNT + 1 },
+    (_, index) => MIN_DRAFT_GENERATION_COUNT + index
+  )
+}
 
 export function loadDraftGenerationCount(): number {
   try {

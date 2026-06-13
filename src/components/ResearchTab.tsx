@@ -1,11 +1,6 @@
 import { useEffect, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
-import {
-  MAX_DRAFT_GENERATION_COUNT,
-  MIN_DRAFT_GENERATION_COUNT,
-  RESEARCH_SOURCE_TYPE,
-  SETTING_KEYS,
-} from '../lib/constants'
+import { RESEARCH_SOURCE_TYPE, SETTING_KEYS } from '../lib/constants'
 import {
   generateDraftsFromLatestResearch,
   getAllHistoricalSources,
@@ -14,7 +9,11 @@ import {
   runResearch,
   type ResearchRunWithSources,
 } from '../lib/db'
-import { loadDraftGenerationCount, saveDraftGenerationCount } from '../lib/draftGeneration'
+import {
+  draftCountOptions,
+  loadDraftGenerationCount,
+  saveDraftGenerationCount,
+} from '../lib/draftGeneration'
 import { errorMessage } from '../lib/errors'
 import { formatResearchSourceDate, ResearchSourceCard } from './ResearchSourceCard'
 import { HistoricalSourcesList } from './HistoricalSourcesList'
@@ -268,20 +267,20 @@ export function ResearchTab() {
                 <label className="form-control w-full max-w-xs">
                   <div className="label py-0 pb-1">
                     <span className="label-text font-medium">Posts to generate</span>
-                    <span className="label-text-alt opacity-70">
-                      {MIN_DRAFT_GENERATION_COUNT}–{MAX_DRAFT_GENERATION_COUNT}
-                    </span>
                   </div>
-                  <input
-                    type="number"
-                    className="input input-bordered input-sm w-full"
-                    min={MIN_DRAFT_GENERATION_COUNT}
-                    max={MAX_DRAFT_GENERATION_COUNT}
+                  <select
+                    className="select select-bordered select-sm w-full"
                     value={draftCount}
                     onChange={(event) => handleDraftCountChange(event.target.value)}
                     disabled={isBusy}
                     data-testid="draft-generation-count"
-                  />
+                  >
+                    {draftCountOptions().map((count) => (
+                      <option key={count} value={count}>
+                        {count} {count === 1 ? 'post' : 'posts'}
+                      </option>
+                    ))}
+                  </select>
                 </label>
 
                 <button

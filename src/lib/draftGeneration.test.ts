@@ -1,6 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { DRAFT_COUNT_STORAGE_KEY } from './constants'
-import { loadDraftGenerationCount, saveDraftGenerationCount } from './draftGeneration'
+import {
+  draftCountOptions,
+  loadDraftGenerationCount,
+  saveDraftGenerationCount,
+} from './draftGeneration'
 
 describe('draftGeneration', () => {
   beforeEach(() => {
@@ -20,5 +24,9 @@ describe('draftGeneration', () => {
   it('clamps out-of-range values', () => {
     expect(saveDraftGenerationCount(99)).toBe(10)
     expect(saveDraftGenerationCount(0)).toBe(1)
+  })
+
+  it('exposes selector options from min to max', () => {
+    expect(draftCountOptions()).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
   })
 })
