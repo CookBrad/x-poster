@@ -18,7 +18,7 @@ describe('ApiKeySettings', () => {
 
     expect(screen.getByTestId('xai-key-input')).toBeInTheDocument()
     expect(screen.getByTestId('save-key-button')).toBeInTheDocument()
-    expect(screen.getByText(/No key saved yet/i)).toBeInTheDocument()
+    expect(screen.getByText(/Required before you can run research/i)).toBeInTheDocument()
   })
 
   it('disables save button when input is empty', () => {

@@ -26,11 +26,20 @@ describe('XCredentialsSettings', () => {
     expect(screen.getByTestId('x-cred-x_consumer_key')).toBeInTheDocument()
   })
 
-  it('saves and tests credentials', async () => {
+  it('saves and tests credentials when all fields are filled', async () => {
     render(<XCredentialsSettings />)
 
     fireEvent.change(screen.getByTestId('x-cred-x_consumer_key'), {
       target: { value: 'key123' },
+    })
+    fireEvent.change(screen.getByTestId('x-cred-x_consumer_secret'), {
+      target: { value: 'secret123' },
+    })
+    fireEvent.change(screen.getByTestId('x-cred-x_access_token'), {
+      target: { value: 'token123' },
+    })
+    fireEvent.change(screen.getByTestId('x-cred-x_access_token_secret'), {
+      target: { value: 'tokensecret123' },
     })
     fireEvent.click(screen.getByTestId('x-cred-test'))
 
