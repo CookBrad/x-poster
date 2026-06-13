@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { updateDraft, parseSources, type Draft } from '../lib/db'
+import { getDraftDisplayImage } from '../lib/draftImage'
+import { DraftImage } from './DraftImage'
 
 export interface DraftEditModalProps {
   draft: Draft | null
@@ -17,7 +19,7 @@ export function DraftEditModal({ draft, open, onClose, onSaved }: DraftEditModal
   useEffect(() => {
     if (draft && open) {
       setText(draft.text)
-      setImageUrl(draft.image_url ?? '')
+      setImageUrl(getDraftDisplayImage(draft) ?? draft.image_url ?? '')
       setError(null)
     }
   }, [draft, open])
@@ -101,13 +103,21 @@ export function DraftEditModal({ draft, open, onClose, onSaved }: DraftEditModal
             <p className="whitespace-pre-wrap text-sm" data-testid="draft-edit-preview">
               {previewText}
             </p>
-            {imageUrl.trim() && (
+            {imageUrl.trim() ? (
               <img
                 src={imageUrl.trim()}
                 alt="Preview"
-                className="mt-2 rounded-lg max-h-40 object-cover"
+                className="mt-2 rounded-lg max-h-40 object-cover w-full"
                 onError={(e) => {
-                  (e.target as HTMLImageElement).style.display = 'none'
+                  ;(e.target as HTMLImageElement).style.display = 'none'
+                }}
+              />
+            ) : (
+              <DraftImage
+                draft={draft}
+                className="max-h-40"
+                onResolved={(updated) => {
+                  if (updated.image_url) setImageUrl(updated.image_url)
                 }}
               />
             )}

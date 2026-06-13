@@ -881,6 +881,59 @@ pub async fn test_x_credentials(state: State<'_, AppState>) -> Result<String, St
 }
 
 #[tauri::command]
+pub async fn resolve_draft_image(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Draft, String> {
+    resolve_draft_image_db(&state.db, id).await
+}
+
+pub async fn resolve_draft_image_db(db: &SqlitePool, id: String) -> Result<Draft, String> {
+    let draft = get_draft_db(db, id.clone())
+        .await?
+        .ok_or("Draft not found".to_string())?;
+
+    if draft
+        .image_url
+        .as_ref()
+        .map(|s| !s.is_empty())
+        .unwrap_or(false)
+    {
+        return Ok(draft);
+    }
+
+    let sources: Vec<research::ResearchSource> =
+        serde_json::from_str(&draft.sources_json).unwrap_or_default();
+    let text = x_media::normalize_source_mentions(&draft.text, &sources);
+    let primary = x_media::primary_x_source(&text, &sources);
+
+    let creds = load_x_credentials_db(db).await.ok();
+    let preview = x_media::resolve_preview_image_url(
+        creds.as_ref(),
+        None,
+        primary,
+    )
+    .await?;
+
+    if let Some(url) = preview {
+        update_draft_db(
+            db,
+            id.clone(),
+            UpdateDraftInput {
+                text: None,
+                image_url: Some(url),
+                status: None,
+            },
+        )
+        .await?;
+    }
+
+    get_draft_db(db, id)
+        .await?
+        .ok_or("Draft not found".to_string())
+}
+
+#[tauri::command]
 pub async fn post_draft_to_x(state: State<'_, AppState>, id: String) -> Result<Draft, String> {
     let draft = get_draft_db(&state.db, id.clone())
         .await?
@@ -900,6 +953,27 @@ pub async fn post_draft_to_x(state: State<'_, AppState>, id: String) -> Result<D
         serde_json::from_str(&draft.sources_json).unwrap_or_default();
     let text = x_media::normalize_source_mentions(&draft.text, &sources);
     let primary = x_media::primary_x_source(&text, &sources);
+
+    if draft.image_url.as_ref().map(|s| s.is_empty()).unwrap_or(true) {
+        if let Ok(Some(preview_url)) =
+            x_media::resolve_preview_image_url(Some(&creds), None, primary).await
+        {
+            update_draft_db(
+                &state.db,
+                draft.id.clone(),
+                UpdateDraftInput {
+                    text: None,
+                    image_url: Some(preview_url),
+                    status: None,
+                },
+            )
+            .await?;
+        }
+    }
+
+    let draft = get_draft_db(&state.db, id.clone())
+        .await?
+        .ok_or("Draft not found".to_string())?;
 
     let media_id = x_media::resolve_post_media(
         &creds,

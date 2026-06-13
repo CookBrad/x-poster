@@ -200,46 +200,64 @@ pub async fn upload_media_image(creds: &XCredentials, bytes: &[u8]) -> Result<St
         .ok_or_else(|| format!("No media_id_string in upload response: {}", body))
 }
 
-pub async fn resolve_post_media(
-    creds: &XCredentials,
+pub fn preview_image_from_source(source: Option<&ResearchSource>) -> Option<String> {
+    source
+        .and_then(|s| s.media_url.as_ref())
+        .filter(|u| !u.is_empty())
+        .cloned()
+}
+
+pub fn tweet_id_from_source(source: &ResearchSource) -> Option<String> {
+    source
+        .original_id
+        .as_ref()
+        .filter(|id| !id.is_empty() && id.chars().all(|c| c.is_ascii_digit()))
+        .cloned()
+        .or_else(|| extract_tweet_id_from_url(&source.url))
+}
+
+/// Resolve a displayable HTTPS image URL for app preview and posting.
+pub async fn resolve_preview_image_url(
+    creds: Option<&XCredentials>,
     draft_image_url: Option<&str>,
     primary_source: Option<&ResearchSource>,
 ) -> Result<Option<String>, String> {
     if let Some(url) = draft_image_url.filter(|u| !u.is_empty()) {
-        match download_image(url).await {
-            Ok(bytes) => return Ok(Some(upload_media_image(creds, &bytes).await?)),
-            Err(e) => log::warn!("resolve_post_media: draft image_url failed: {}", e),
-        }
+        return Ok(Some(url.to_string()));
+    }
+
+    if let Some(url) = preview_image_from_source(primary_source) {
+        return Ok(Some(url));
     }
 
     let Some(source) = primary_source else {
         return Ok(None);
     };
 
-    if let Some(url) = source.media_url.as_ref().filter(|u| !u.is_empty()) {
-        match download_image(url).await {
-            Ok(bytes) => return Ok(Some(upload_media_image(creds, &bytes).await?)),
-            Err(e) => log::warn!("resolve_post_media: source media_url failed: {}", e),
-        }
-    }
-
-    let tweet_id = source
-        .original_id
-        .as_ref()
-        .filter(|id| id.chars().all(|c| c.is_ascii_digit()))
-        .cloned()
-        .or_else(|| extract_tweet_id_from_url(&source.url));
-
-    let Some(tweet_id) = tweet_id else {
+    let Some(tweet_id) = tweet_id_from_source(source) else {
         return Ok(None);
     };
 
-    let photo_url = fetch_tweet_photo_url(creds, &tweet_id).await?;
-    let Some(photo_url) = photo_url else {
+    let Some(creds) = creds else {
         return Ok(None);
     };
 
-    let bytes = download_image(&photo_url).await?;
+    fetch_tweet_photo_url(creds, &tweet_id).await
+}
+
+pub async fn resolve_post_media(
+    creds: &XCredentials,
+    draft_image_url: Option<&str>,
+    primary_source: Option<&ResearchSource>,
+) -> Result<Option<String>, String> {
+    let preview =
+        resolve_preview_image_url(Some(creds), draft_image_url, primary_source).await?;
+
+    let Some(url) = preview else {
+        return Ok(None);
+    };
+
+    let bytes = download_image(&url).await?;
     Ok(Some(upload_media_image(creds, &bytes).await?))
 }
 
@@ -264,6 +282,18 @@ mod tests {
             original_id: Some("1234567890".into()),
             media_url: None,
         }
+    }
+
+    #[test]
+    fn test_preview_image_from_source() {
+        let source = x_source("SawyerMerritt", "https://x.com/SawyerMerritt/status/1");
+        let mut with_media = source.clone();
+        with_media.media_url = Some("https://pbs.twimg.com/media/abc.jpg".into());
+        assert_eq!(
+            preview_image_from_source(Some(&with_media)),
+            Some("https://pbs.twimg.com/media/abc.jpg".to_string())
+        );
+        assert_eq!(preview_image_from_source(Some(&source)), None);
     }
 
     #[test]

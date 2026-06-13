@@ -8,6 +8,7 @@ import {
   type Draft,
 } from '../lib/db'
 import { DraftEditModal } from './DraftEditModal'
+import { DraftImage } from './DraftImage'
 
 export default function QueueTab() {
   const [drafts, setDrafts] = useState<Draft[]>([])
@@ -133,6 +134,9 @@ export default function QueueTab() {
               onApprove={() => void handleApprovePost(draft)}
               onSkip={() => void handleSkip(draft.id)}
               onDelete={() => void handleDelete(draft)}
+              onImageResolved={(updated) => {
+                setDrafts((prev) => prev.map((d) => (d.id === updated.id ? updated : d)))
+              }}
             />
           ))}
         </div>
@@ -158,6 +162,7 @@ function DraftCard({
   onApprove,
   onSkip,
   onDelete,
+  onImageResolved,
 }: {
   draft: Draft
   posting: boolean
@@ -165,6 +170,7 @@ function DraftCard({
   onApprove: () => void
   onSkip: () => void
   onDelete: () => void
+  onImageResolved?: (updated: Draft) => void
 }) {
   let sources: { user?: string; source?: string; title?: string }[] = []
   try {
@@ -187,17 +193,7 @@ function DraftCard({
 
         <p className="font-medium whitespace-pre-wrap">{draft.text}</p>
 
-        {draft.image_url && (
-          <img
-            src={draft.image_url}
-            alt="Post attachment from source"
-            className="mt-2 rounded-lg max-h-48 w-full object-cover"
-            data-testid={`draft-image-${draft.id}`}
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = 'none'
-            }}
-          />
-        )}
+        <DraftImage draft={draft} onResolved={onImageResolved} />
 
         {sources.length > 0 && (
           <div className="text-xs opacity-60 mt-2">

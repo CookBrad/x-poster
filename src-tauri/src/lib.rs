@@ -69,6 +69,7 @@ pub fn run() {
         commands::reset_research_data,
         commands::generate_drafts_from_latest_research,
         commands::post_draft_to_x,
+        commands::resolve_draft_image,
         commands::test_x_credentials,
         commands::has_x_credentials,
     ])

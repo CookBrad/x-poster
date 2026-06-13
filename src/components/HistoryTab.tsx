@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { getDrafts, parseSources, type Draft } from '../lib/db'
+import { DraftImage } from './DraftImage'
 
 export default function HistoryTab() {
   const [posted, setPosted] = useState<Draft[]>([])
@@ -72,6 +73,7 @@ export default function HistoryTab() {
                     )}
                   </div>
                   <p className="text-sm whitespace-pre-wrap">{draft.text}</p>
+                  <DraftImage draft={draft} className="max-h-40" />
                   {sources.length > 0 && (
                     <p className="text-xs opacity-60 mt-2">
                       Sources: {sources.map((s: { title?: string }) => s.title).filter(Boolean).join(', ')}

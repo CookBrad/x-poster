@@ -1,18 +1,28 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import QueueTab from './QueueTab'
-import { getDrafts, postDraftToX, type Draft } from '../lib/db'
+import { getDrafts, postDraftToX, parseSources, type Draft } from '../lib/db'
+import { invoke } from '@tauri-apps/api/core'
 
-vi.mock('../lib/db', () => ({
-  getDrafts: vi.fn(),
-  createDraft: vi.fn(),
-  updateDraft: vi.fn(),
-  deleteDraft: vi.fn(),
-  postDraftToX: vi.fn(),
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: vi.fn(),
 }))
+
+vi.mock('../lib/db', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/db')>()
+  return {
+    ...actual,
+    getDrafts: vi.fn(),
+    createDraft: vi.fn(),
+    updateDraft: vi.fn(),
+    deleteDraft: vi.fn(),
+    postDraftToX: vi.fn(),
+  }
+})
 
 const mockGetDrafts = vi.mocked(getDrafts)
 const mockPostDraftToX = vi.mocked(postDraftToX)
+const mockInvoke = vi.mocked(invoke)
 
 const pendingDraft: Draft = {
   id: 'draft-1',
@@ -30,6 +40,11 @@ describe('QueueTab', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockGetDrafts.mockResolvedValue([pendingDraft])
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'resolve_draft_image') return pendingDraft
+      return null
+    })
+    expect(parseSources).toBeDefined()
   })
 
   it('loads and displays pending drafts', async () => {
