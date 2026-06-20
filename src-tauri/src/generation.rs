@@ -34,9 +34,11 @@ fn shared_generation_rules(user_provided: bool) -> &'static str {
 - STOCK TAGS WHEN MARKET-RELEVANT (ONE CASHTAG MAX):
   - Include at most ONE cashtag per post — never use both $TSLA and $SPCX together.
   - Only add $TSLA or $SPCX when the source topic is genuinely stock-relevant; skip cashtags for unrelated political posts.
-- INLINE ATTRIBUTION:
-  - X/Twitter sources (custom_x): attribute with an @ mention (e.g. "As @Handle noted...").
-  - Article sources (custom_article): attribute as "source: Publication Name" — never use @ for publications.
+- ATTRIBUTION POLICY + SUPPORTING FACTS FROM KNOWLEDGE:
+  - Only attribute with "As @Handle noted..." (for X/custom_x) or "source: Publication Name" (for articles) when the specific claim, quote, data point, or recent development comes directly from the provided source AND is not generally known public information.
+  - DO NOT quote or attribute the source for generally known or established facts (e.g. "Tesla makes electric vehicles", "FSD is Tesla's driver assistance technology", basic company background, widely understood industry context, or timeless technical explanations). State these plainly as supporting facts drawn from general knowledge.
+  - You MAY (and should, to make posts more interesting and informative) add relevant supporting facts, background, or context from your pre-trained general knowledge. These enhance the main insight from the source without shifting focus away from it. Never fabricate recent events, specific numbers, quotes, or time-sensitive developments not present in the source.
+  - The post should stand alone as interesting even if the reader hasn't seen the source.
   - Never use parenthetical handles like (SawyerMerritt).
 - Avoid repeating themes from the user's RECENT POSTS list below.
 - Each post must be under 280 characters (single tweet). Count cashtags toward the limit."#
@@ -47,9 +49,11 @@ fn shared_generation_rules(user_provided: bool) -> &'static str {
   - Include at most ONE cashtag per post — never use both $TSLA and $SPCX together.
   - Tesla topics: use $TSLA. SpaceX topics: use $SPCX. Pick the single tag that best matches the main focus.
   - Do NOT add $SPCX to Tesla-only posts. xAI, Neuralink, and Boring Company have no standard cashtag.
-- INLINE ATTRIBUTION:
-  - X/Twitter sources (x_grok, custom_x): attribute with an @ mention (e.g. "As @SawyerMerritt noted...").
-  - RSS/news sources: attribute as "source: Publication Name" — never use @ for RSS publications.
+- ATTRIBUTION POLICY + SUPPORTING FACTS FROM KNOWLEDGE:
+  - Only attribute with "As @Handle noted..." (for X/x_grok/custom_x) or "source: Publication Name" (for RSS/news) when the specific claim, quote, data point, or recent development comes directly from the provided source AND is not generally known public information.
+  - DO NOT quote or attribute the source for generally known or established facts (e.g. "Tesla makes electric vehicles", "FSD is Tesla's driver assistance technology", basic company background, widely understood industry context, or timeless technical explanations). State these plainly as supporting facts drawn from general knowledge.
+  - You MAY (and should, to make posts more interesting and informative) add relevant supporting facts, background, or context from your pre-trained general knowledge. These enhance the main insight from the source without shifting focus away from it. Never fabricate recent events, specific numbers, quotes, or time-sensitive developments not present in the source.
+  - The post should stand alone as interesting even if the reader hasn't seen the source.
   - Never use parenthetical handles like (SawyerMerritt).
 - Avoid repeating themes from the user's RECENT POSTS list below.
 - Prefer Musk company/tech angles. If a source is political, still write the post about that source rather than refusing.
@@ -68,11 +72,12 @@ fn insight_style_rules() -> &'static str {
 2. ANTI-PHRASING RULE:
    - Never reuse verbs, sentence structures, or headline phrasing directly from the source or title. Re-express the core implication in fresh language.
 
-GOOD (Tesla/X): "As @SawyerMerritt noted, Austin Robotaxi geofence widened again — the read-through for $TSLA isn't the headline, it's faster real-world miles accruing toward regulatory confidence on unsupervised FSD."
+GOOD (Tesla/X, general fact without attribution + specific with): "FSD development has long relied on accumulating diverse real-world miles for regulatory progress. As @SawyerMerritt noted, Austin Robotaxi geofence widened again — the read-through for $TSLA isn't the headline, it's faster real-world miles accruing toward regulatory confidence on unsupervised FSD."
 GOOD (RSS): "Per source: Not A Tesla App, Smart Summon on Cybertruck widens the real-world edge-case pool $TSLA needs before robotaxi scale — the product story is data velocity, not the feature checkbox."
-GOOD (deeper originality): "As @WholeMarsBlog posted on Cybertruck FSD, the real signal is the data loop back to Dojo training — each additional mile in unsupervised mode compounds the software moat faster than any hardware ramp, shifting the margin mix story from cars to bits $TSLA"
+GOOD (deeper originality, supporting fact added): "As @WholeMarsBlog posted on Cybertruck FSD, the real signal is the data loop back to Dojo training — each additional mile in unsupervised mode compounds the software moat faster than any hardware ramp, shifting the margin mix story from cars to bits $TSLA. (Supporting context: autonomy software already shows dramatically higher gross margins than vehicle hardware in Tesla's business model.)"
 BAD (regurgitation): "Teslarati reports Tesla expanded Robotaxi in Austin." (just repeats the source)
-BAD (shallow): "Robotaxi expansion is interesting for the company and its stock." (no specific implication or re-expression)"#
+BAD (shallow): "Robotaxi expansion is interesting for the company and its stock." (no specific implication or re-expression)
+BAD (over-attribution): "As @SawyerMerritt noted, FSD is Tesla's Full Self-Driving system." (attributes common knowledge that needs no source citation)"#
 }
 
 fn informative_style_rules() -> &'static str {
@@ -133,7 +138,7 @@ pub fn build_generation_system_prompt(style: DraftStyle, sources: &[ResearchSour
     };
 
     let rationale_hint = match style {
-        DraftStyle::Insight => "1 sentence on what useful insight you added beyond the source",
+        DraftStyle::Insight => "1 sentence on what useful insight you added beyond the source (and any supporting facts from your general knowledge)",
         DraftStyle::Informative => "1 sentence on the key fact you highlighted and why it is useful",
         DraftStyle::Funny => "1 sentence on the humorous angle you chose",
         DraftStyle::Witty => "1 sentence on the witty hook you used",
@@ -252,9 +257,12 @@ pub fn build_generation_user_prompt(
         }
     };
 
+    let attribution_requirement = "- ATTRIBUTION AND SUPPORTING FACTS: Strictly follow the ATTRIBUTION POLICY + SUPPORTING FACTS FROM KNOWLEDGE in the system prompt. Only use source attribution for specific, non-general information directly from the source. Use your general knowledge to add supporting facts/background that make the post more interesting and self-contained (without fabricating recent details).";
+
     format!(
         "Generate exactly {} draft post(s) in {} style from these research sources.{custom_source_note}\n\
          Requirements for each draft:\n\
+         {}\n\
          {}\n\
          {}\n\
          - Include at most one cashtag ($TSLA or $SPCX) when stock-relevant.\n\n\
@@ -264,6 +272,7 @@ pub fn build_generation_user_prompt(
         style.as_str(),
         style_requirement,
         framing_requirement,
+        attribution_requirement,
         source_lines.join("\n"),
         recent,
         custom_source_note = custom_source_note,
@@ -769,6 +778,10 @@ mod tests {
         assert!(prompt.contains("Re-express the core implication"));
         assert!(prompt.contains("non-generic"));
         assert!(prompt.contains("screenshotting"));
+        // New attribution policy for general knowledge + supporting facts
+        assert!(prompt.contains("generally known or established facts"));
+        assert!(prompt.contains("SUPPORTING FACTS FROM KNOWLEDGE"));
+        assert!(prompt.contains("DO NOT quote or attribute the source for generally known"));
     }
 
     #[test]

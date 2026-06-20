@@ -327,7 +327,17 @@ This section captures key discussions from conversations so future sessions can 
 
 This builds on the fresh-take principle and advances the spirit of T-015 (UI visibility for the insight angle).
 
+**Follow-up refinement (user request):**
+- Updated ATTRIBUTION POLICY in shared rules (both custom and standard paths) + new supporting facts guidance: Grok must NOT attribute generally known/established information to the source. Only attribute specific, source-unique recent claims or data.
+- Explicitly instruct to "add its own supporting facts" from general knowledge (background, context, timeless explanations) to make posts more interesting/self-contained, while keeping core insight source-grounded and never fabricating recent events.
+- Updated GOOD/BAD examples in insight rules (and one user prompt style req) to demonstrate mixed attribution + added supporting context.
+- Rationale hint updated to mention supporting facts, so the displayed "Grok's intended insight" in the edit modal can reflect when general knowledge was used.
+- Added test assertions for the new policy phrases.
+- This makes posts read more naturally and originally (no forced "As @X noted" for common facts) while still grounding novelty in sources and allowing richer, informative content.
+
 ---
+
+
 
 ### 2026-06-04 — Custom draft inputs, per-source generation, image support, ResearchTab component extract
 
