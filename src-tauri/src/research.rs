@@ -230,7 +230,7 @@ Return ONLY a JSON array (no markdown fences, no extra prose outside the array) 
     "post_id": "the exact post ID if you can determine it with high confidence",
     "media_url": "direct HTTPS URL to the main photo in the post, if the post includes an image and you can determine the URL with high confidence; otherwise omit or null",
     "date": "YYYY-MM-DD if known, or a clear relative date like 'June 2 2026' or '2 days ago'",
-    "why_interesting": "1-2 sentence note on why this is useful for a research post",
+    "why_interesting": "1-2 sentence note on why this is useful for a research post, ideally calling out a non-obvious implication, specific data point, timeline read-through, margin/valuation angle, or strategic significance that could seed an original insight post",
     "confidence": "high | medium | low  (how confident you are that the text, author, and link are accurate and real)"
   }
 ]
@@ -244,7 +244,7 @@ X SEARCH ONLY (CRITICAL):
 
 If verbatim recent posts are limited, still return the best substantive items you can. Do not default to an empty array."#;
 
-    let user_prompt = "Find recent substantive posts/quotes from high-signal voices (analysts, reporters, employees, etc.) about Tesla, SpaceX, xAI, Neuralink or The Boring Company. Use search to find real posts on X only. Completely ignore general web results. Only include items where you are highly confident the text, author, date, and link are accurate and real. If unsure, skip the item. Quality and accuracy over quantity. Return up to 15 items. Include the confidence field for each.";
+    let user_prompt = "Find recent substantive posts/quotes from high-signal voices (analysts, reporters, employees, etc.) about Tesla, SpaceX, xAI, Neuralink or The Boring Company. Use search to find real posts on X only. Completely ignore general web results. Only include items where you are highly confident the text, author, date, and link are accurate and real. If unsure, skip the item. Quality and accuracy over quantity. Return up to 15 items. For each, include a why_interesting note that highlights a non-obvious implication or angle (see JSON schema). Include the confidence field for each.";
 
     let body = serde_json::json!({
         "model": model,

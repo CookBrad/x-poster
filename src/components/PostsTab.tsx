@@ -76,6 +76,7 @@ export default function PostsTab() {
           { type: 'rss', source: 'Teslarati', title: 'Tesla Q2 deliveries beat expectations' },
         ]),
         image_url: null,
+        generation_rationale: null,
       })
       setSubTab('pending')
       await loadDrafts()

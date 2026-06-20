@@ -13,12 +13,14 @@ const draft = {
   id: 'draft-1',
   text: 'Test post',
   sources_json: '[]',
+  generation_rationale: null,
   image_url: 'https://example.com/photo.jpg',
   status: 'pending' as const,
   created_at: '',
   updated_at: '',
   posted_at: null,
   x_post_id: null,
+  generation_rationale: null,
 }
 
 describe('DraftImage', () => {

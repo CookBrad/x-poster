@@ -36,6 +36,7 @@ const pendingDraft: Draft = {
   updated_at: '2026-01-01T00:00:00Z',
   posted_at: null,
   x_post_id: null,
+  generation_rationale: null,
 }
 
 const postedDraft: Draft = {
@@ -45,6 +46,7 @@ const postedDraft: Draft = {
   status: 'posted',
   posted_at: '2026-01-02T00:00:00Z',
   x_post_id: '999',
+  generation_rationale: null,
 }
 
 describe('PostsTab', () => {

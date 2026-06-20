@@ -21,6 +21,7 @@ const baseDraft: Draft = {
   updated_at: '2026-01-01T00:00:00Z',
   posted_at: null,
   x_post_id: null,
+  generation_rationale: null,
 }
 
 describe('draftUtils', () => {

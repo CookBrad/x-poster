@@ -1,4 +1,4 @@
-use crate::draft_image::{extract_meta_image_url, extract_page_title_and_description};
+use crate::draft_image::{extract_main_text_excerpt, extract_meta_image_url, extract_page_title_and_description};
 use crate::research::ResearchSource;
 use crate::x_media::{fetch_tweet_source_details, TweetSourceDetails};
 use crate::x_post::{extract_tweet_id_from_url, XCredentials};
@@ -163,7 +163,10 @@ async fn resolve_article_url(url: &str) -> Result<ResearchSource, String> {
 
     let (title, description) = extract_page_title_and_description(&html);
     let title = title.unwrap_or_else(|| source_name_from_url(url));
-    let content = description.unwrap_or_else(|| {
+    // Prefer longer main-text excerpt (new) so generation has more actual article substance
+    // for originality/interesting implications instead of just a teaser sentence.
+    let body = extract_main_text_excerpt(&html);
+    let content = body.or(description).unwrap_or_else(|| {
         format!("Article at {url}. Write a useful post based on this story.")
     });
     let media_url = extract_meta_image_url(&html);
@@ -224,5 +227,17 @@ mod tests {
         let source = research_source_from_topic("Starship booster catch milestone");
         assert_eq!(source.source_type, "custom_topic");
         assert!(source.content.contains("Starship booster catch milestone"));
+    }
+
+    #[test]
+    fn test_extract_main_text_excerpt_pulls_paragraphs() {
+        // Basic HTML with <p> tags; the extractor should concatenate meaningful text.
+        let html = r#"<html><body><p>First para about robotaxi data velocity.</p><p>Second detail on FSD edge cases and regulatory path.</p><script>ignore</script></body></html>"#;
+        let ex = extract_main_text_excerpt(html);
+        assert!(ex.is_some());
+        let e = ex.unwrap();
+        assert!(e.contains("First para about robotaxi data velocity"));
+        assert!(e.contains("Second detail on FSD edge cases"));
+        assert!(e.len() > 50 && e.len() <= 1500);
     }
 }

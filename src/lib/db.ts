@@ -16,6 +16,7 @@ export interface Draft {
   updated_at: string
   posted_at: string | null
   x_post_id: string | null
+  generation_rationale?: string | null
 }
 
 export interface DraftSource {
@@ -32,12 +33,14 @@ export interface CreateDraftInput {
   text: string
   sources_json: string
   image_url?: string | null
+  generation_rationale?: string | null
 }
 
 export interface UpdateDraftInput {
   text?: string
   image_url?: string | null
   status?: DraftStatus
+  generation_rationale?: string | null
 }
 
 export async function createDraft(input: CreateDraftInput): Promise<Draft> {

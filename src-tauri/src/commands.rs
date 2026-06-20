@@ -22,6 +22,7 @@ pub struct Draft {
     pub updated_at: String,
     pub posted_at: Option<String>,
     pub x_post_id: Option<String>,
+    pub generation_rationale: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -29,6 +30,7 @@ pub struct CreateDraftInput {
     pub text: String,
     pub sources_json: String,
     pub image_url: Option<String>,
+    pub generation_rationale: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -36,6 +38,7 @@ pub struct UpdateDraftInput {
     pub text: Option<String>,
     pub image_url: Option<String>,
     pub status: Option<String>,
+    pub generation_rationale: Option<String>,
 }
 
 /// Create a new draft in the queue (Tauri command entrypoint)
@@ -62,12 +65,13 @@ pub async fn create_draft_db(db: &SqlitePool, input: CreateDraftInput) -> Result
         updated_at: now.clone(),
         posted_at: None,
         x_post_id: None,
+        generation_rationale: input.generation_rationale,
     };
 
     sqlx::query(
         r#"
-        INSERT INTO drafts (id, text, sources_json, image_url, status, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO drafts (id, text, sources_json, image_url, status, created_at, updated_at, generation_rationale)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         "#
     )
     .bind(&draft.id)
@@ -77,6 +81,7 @@ pub async fn create_draft_db(db: &SqlitePool, input: CreateDraftInput) -> Result
     .bind(&draft.status)
     .bind(&draft.created_at)
     .bind(&draft.updated_at)
+    .bind(&draft.generation_rationale)
     .execute(db)
     .await
     .map_err(|e| format!("Failed to create draft: {}", e))?;
@@ -160,6 +165,9 @@ pub async fn update_draft_db(
     }
     if let Some(status) = input.status {
         sets.push(("status", status));
+    }
+    if let Some(generation_rationale) = input.generation_rationale {
+        sets.push(("generation_rationale", generation_rationale));
     }
 
     // Build the SET clause safely
@@ -306,6 +314,7 @@ mod tests {
             text: "Tesla delivered record numbers in Q2".to_string(),
             sources_json: r#"[{"type":"x","id":"abc123"}]"#.to_string(),
             image_url: Some("https://example.com/image.jpg".to_string()),
+            generation_rationale: Some("The margin story from energy attach rates is under-appreciated.".to_string()),
         };
 
         // Use the real reusable function
@@ -313,6 +322,7 @@ mod tests {
 
         assert_eq!(created.status, "pending");
         assert!(!created.id.is_empty());
+        assert_eq!(created.generation_rationale, Some("The margin story from energy attach rates is under-appreciated.".to_string()));
 
         // Fetch via the repository function too
         let all = get_drafts_db(&db, None).await.expect("get failed");
@@ -331,12 +341,14 @@ mod tests {
             text: "Original text".to_string(),
             sources_json: "[]".to_string(),
             image_url: None,
+            generation_rationale: None,
         }).await.unwrap();
 
         let update = UpdateDraftInput {
             text: Some("Updated with fresh analysis".to_string()),
             image_url: None,
             status: Some("pending".to_string()),
+            generation_rationale: None,
         };
 
         update_draft_db(&db, created.id.clone(), update).await.expect("update failed");
@@ -355,6 +367,7 @@ mod tests {
                 text: "Pending draft".to_string(),
                 sources_json: "[]".to_string(),
                 image_url: None,
+                generation_rationale: None,
             },
         )
         .await
@@ -366,6 +379,7 @@ mod tests {
                 text: "Posted draft".to_string(),
                 sources_json: "[]".to_string(),
                 image_url: None,
+                generation_rationale: None,
             },
         )
         .await
@@ -662,6 +676,7 @@ async fn maybe_resolve_preview_image(
                 text: None,
                 image_url: Some(url),
                 status: None,
+                generation_rationale: None,
             },
         )
         .await?;

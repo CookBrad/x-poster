@@ -95,6 +95,12 @@ export function DraftEditModal({ draft, open, onClose, onSaved }: DraftEditModal
               Drafts aim for useful insight (not headline regurgitation), constructive bullish framing on
               Musk companies, and $TSLA / $SPCX when stock-relevant.
             </p>
+            {draft.generation_rationale && (
+              <div className="mt-2 p-2 bg-base-300/50 rounded text-[10px] opacity-70">
+                <span className="font-medium">Grok&#39;s intended insight / added value:</span>{' '}
+                {draft.generation_rationale}
+              </div>
+            )}
           </div>
         )}
 

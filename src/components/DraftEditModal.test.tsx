@@ -20,6 +20,7 @@ const draft: Draft = {
   updated_at: '2026-01-01T00:00:00Z',
   posted_at: null,
   x_post_id: null,
+  generation_rationale: 'The data velocity angle is the real story.',
 }
 
 describe('DraftEditModal', () => {
@@ -56,6 +57,7 @@ describe('DraftEditModal', () => {
       expect(mockUpdateDraft).toHaveBeenCalledWith('d-1', {
         text: 'Updated fresh take on FSD.',
         image_url: null,
+        // generation_rationale omitted / undefined is fine for update
       })
       expect(onSaved).toHaveBeenCalled()
       expect(onClose).toHaveBeenCalled()

@@ -140,6 +140,52 @@ fn parse_content_attribute(fragment: &str) -> Option<String> {
     Some(trimmed[..end].to_string())
 }
 
+/// Crude but dependency-free main article body extractor.
+/// Scans for <p>...</p>, takes text between the tags (after first >), strips any inner <tags>,
+/// concatenates paragraphs with spaces. Skips very short or script-like.
+/// Returns up to ~1500 chars of useful text for generation sources.
+pub fn extract_main_text_excerpt(html: &str) -> Option<String> {
+    let lower = html.to_lowercase();
+    let mut result = String::new();
+    let mut search_pos = 0usize;
+    let max_len = 1500;
+
+    while result.len() < max_len {
+        if let Some(p_start_rel) = lower[search_pos..].find("<p") {
+            let p_start = search_pos + p_start_rel;
+            // find the end of opening <p...>
+            if let Some(gt_rel) = lower[p_start..].find('>') {
+                let content_start = p_start + gt_rel + 1;
+                if let Some(p_end_rel) = lower[content_start..].find("</p>") {
+                    let raw = &html[content_start..content_start + p_end_rel];
+                    // strip inner tags: keep only text between < >
+                    let mut cleaned = String::new();
+                    let mut in_tag = false;
+                    for c in raw.chars() {
+                        if c == '<' { in_tag = true; continue; }
+                        if c == '>' { in_tag = false; continue; }
+                        if !in_tag { cleaned.push(c); }
+                    }
+                    let cleaned = cleaned.split_whitespace().collect::<Vec<_>>().join(" ");
+                    if cleaned.len() > 20 {
+                        if !result.is_empty() { result.push(' '); }
+                        result.push_str(&cleaned);
+                    }
+                    search_pos = content_start + p_end_rel + 4; // </p>
+                    continue;
+                }
+            }
+        }
+        break;
+    }
+
+    if result.len() > 50 {
+        Some(result.chars().take(max_len).collect())
+    } else {
+        None
+    }
+}
+
 fn is_plausible_image_url(url: &str) -> bool {
     let trimmed = url.trim();
     (trimmed.starts_with("https://") || trimmed.starts_with("http://"))
@@ -365,5 +411,16 @@ mod tests {
     fn test_is_local_image_path() {
         assert!(is_local_image_path("/Users/me/Library/draft_images/abc.jpg"));
         assert!(!is_local_image_path("https://example.com/a.jpg"));
+    }
+
+    #[test]
+    fn test_extract_main_text_excerpt_pulls_paragraphs() {
+        let html = r#"<html><body><p>First para about robotaxi data velocity.</p><p>Second detail on FSD edge cases and regulatory path.</p><script>ignore</script></body></html>"#;
+        let ex = extract_main_text_excerpt(html);
+        assert!(ex.is_some());
+        let e = ex.unwrap();
+        assert!(e.contains("First para about robotaxi data velocity"));
+        assert!(e.contains("Second detail on FSD edge cases"));
+        assert!(e.len() > 50 && e.len() <= 1500);
     }
 }

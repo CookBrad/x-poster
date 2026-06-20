@@ -3,7 +3,7 @@
 > **Living document.** This file captures architecture decisions, design discussions, tradeoffs, and the current task breakdown.
 > Update it after any significant conversation or when priorities shift.
 >
-> Last updated: 2026-06-13 (Clean Code principles adopted as mandatory codebase standard)
+> Last updated: 2026-06-13 (Strengthened draft originality via better prompts, richer custom sources, rationale visibility in editor)
 
 ---
 
@@ -298,6 +298,34 @@ Add new questions here as they come up. Resolve and move to Design Decisions whe
 This section captures key discussions from conversations so future sessions can pick up context quickly.
 
 **Format:** Add new entries at the **top**.
+
+---
+
+### 2026-06-13 — Strengthened originality and interesting information in generated drafts
+
+**What was implemented:**
+- Stronger "Insight" (default) generation rules in `generation.rs`: more specific GOOD examples of originality (data moat, margin mix, regulatory read-through), explicit anti-phrasing ("re-express the implication in fresh language"), "long-time follower who spots the non-obvious" directive.
+- Increased source excerpt from 400 to 1200 chars fed to Grok.
+- Special "Notable angle from source" formatting for X research items carrying "Why notable" (from discovery) so the pre-computed insight seed is prominent.
+- Slight enhancement to research X discovery prompt ("why_interesting" schema + user prompt) to bias toward non-obvious angles useful for original posts.
+- Richer custom article sources: new `extract_main_text_excerpt` (p-tag based, ~1500 chars) in `draft_image.rs` used by `custom_source.rs` resolve_article_url — now passes real article body text instead of just short OG description.
+- Added `generation_rationale` (Grok's self-reported "what useful insight you added") to Drafts table (new migration 0007), Create/Update inputs, DB fns, TS types.
+- Rationale is set at creation (from item.rationale), logged at INFO, and surfaced read-only in `DraftEditModal` as a small "Grok's intended insight / added value:" box during mandatory human review/edit. This gives the user visibility into the originality attempt so they can amplify it.
+- Updated all related tests (prompt contains new phrases, rationale population, article excerpt length) + mocks/literals for the new optional field. All tests still pass.
+- Updated root PLAN.md (last updated + new top Session Log entry).
+
+**Rationale:**
+- Addresses user feedback that posts lacked originality/interesting information by attacking the main causes: weak prompt examples + limited context in sources + no feedback of the "added value" to the reviewer.
+- Reuses all existing anti-regurg, finalize, cashtag, attribution, recent dedup, and human-in-loop machinery.
+- Rationale display turns the previously discarded Grok output into a tool for the user (who already must edit/approve every draft).
+
+**Verification performed (per plan):**
+- cargo test / cargo check / npm build / npm test all clean.
+- Manual flows (bulk generate from research, per-source, custom URL/article/topic) produce visibly stronger insight-style posts.
+- Rationale appears in edit modal for generated drafts.
+- Custom article now has much longer content in sources_json.
+
+This builds on the fresh-take principle and advances the spirit of T-015 (UI visibility for the insight angle).
 
 ---
 

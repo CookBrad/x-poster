@@ -63,10 +63,16 @@ fn insight_style_rules() -> &'static str {
    - Every post must add value beyond the source headline: implications, second-order effects, what bulls/bears miss, competitive context, timeline read-through, margin/capital angle, or strategic significance.
    - Do NOT restate, summarize, or closely paraphrase the source.
    - Do NOT write empty hype or press-release filler.
+   - Transform the facts into a novel observation or prediction that feels like it comes from someone who has followed the story for months — specific, non-generic, worth screenshotting or quoting in replies.
+
+2. ANTI-PHRASING RULE:
+   - Never reuse verbs, sentence structures, or headline phrasing directly from the source or title. Re-express the core implication in fresh language.
 
 GOOD (Tesla/X): "As @SawyerMerritt noted, Austin Robotaxi geofence widened again — the read-through for $TSLA isn't the headline, it's faster real-world miles accruing toward regulatory confidence on unsupervised FSD."
 GOOD (RSS): "Per source: Not A Tesla App, Smart Summon on Cybertruck widens the real-world edge-case pool $TSLA needs before robotaxi scale — the product story is data velocity, not the feature checkbox."
-BAD (regurgitation): "Teslarati reports Tesla expanded Robotaxi in Austin." (just repeats the source)"#
+GOOD (deeper originality): "As @WholeMarsBlog posted on Cybertruck FSD, the real signal is the data loop back to Dojo training — each additional mile in unsupervised mode compounds the software moat faster than any hardware ramp, shifting the margin mix story from cars to bits $TSLA"
+BAD (regurgitation): "Teslarati reports Tesla expanded Robotaxi in Austin." (just repeats the source)
+BAD (shallow): "Robotaxi expansion is interesting for the company and its stock." (no specific implication or re-expression)"#
 }
 
 fn informative_style_rules() -> &'static str {
@@ -167,17 +173,40 @@ pub fn build_generation_user_prompt(
 ) -> String {
     let mut source_lines = Vec::new();
     for (i, s) in sources.iter().take(20).enumerate() {
-        let excerpt: String = s.content.chars().take(400).collect();
+        // Increased from 400 to give Grok more raw material (facts, context) for synthesizing
+        // original implications instead of surface-level rephrasing.
+        let excerpt: String = s.content.chars().take(1200).collect();
         let attribution = format_source_attribution(s);
-        source_lines.push(format!(
-            "{}. [{}] {} — {}\n   {} | URL: {}",
-            i + 1,
-            s.source_type,
-            s.title,
-            excerpt,
-            attribution,
-            s.url
-        ));
+
+        // Special formatting for X research sources that carry a "Why notable" note from discovery.
+        // This surfaces the pre-computed interesting angle so generation can build a stronger
+        // original insight on it rather than ignoring the signal in the middle of the excerpt.
+        let formatted = if let Some(pos) = s.content.find("\n\n[Why notable: ") {
+            let main = &s.content[..pos];
+            let why = &s.content[pos + "\n\n[Why notable: ".len()..].trim_end_matches(']');
+            let main_excerpt: String = main.chars().take(1200).collect();
+            format!(
+                "{}. [{}] {} — {}\n   Notable angle from source: {}\n   {} | URL: {}",
+                i + 1,
+                s.source_type,
+                s.title,
+                main_excerpt,
+                why,
+                attribution,
+                s.url
+            )
+        } else {
+            format!(
+                "{}. [{}] {} — {}\n   {} | URL: {}",
+                i + 1,
+                s.source_type,
+                s.title,
+                excerpt,
+                attribution,
+                s.url
+            )
+        };
+        source_lines.push(formatted);
     }
 
     let recent = if recent_posted_texts.is_empty() {
@@ -209,7 +238,7 @@ pub fn build_generation_user_prompt(
 
     let style_requirement = match style {
         DraftStyle::Insight => {
-            "- Add genuine insight (implications, read-through, what the market or observers miss) — never just repeat the source."
+            "- Add genuine insight (implications, read-through, what the market or observers miss) — never just repeat the source. Transform facts into a non-obvious but grounded observation; re-express in fresh language (see style rules for anti-phrasing)."
         }
         DraftStyle::Informative => {
             "- Make each post clear, factual, and useful — explain what happened without heavy analysis."
@@ -355,7 +384,7 @@ pub fn remove_disallowed_cashtags(text: &str, allowed_tags: &[&str]) -> String {
 
 /// Append the single allowed cashtag while respecting the 280-character limit.
 pub fn ensure_stock_tags(text: &str, tags: &[&str]) -> String {
-    let mut result = text.trim().to_string();
+    let result = text.trim().to_string();
     if result.is_empty() {
         return result;
     }
@@ -608,10 +637,15 @@ pub async fn generate_drafts_from_sources_db(
         let sources_json =
             serde_json::to_string(&draft_sources).map_err(|e| e.to_string())?;
 
+        if let Some(r) = &item.rationale {
+            log::info!("Generated draft with rationale: {} | text: {}", r, text);
+        }
+
         let input = CreateDraftInput {
             text,
             sources_json,
             image_url,
+            generation_rationale: item.rationale.clone(),
         };
         let mut draft = create_draft_db(db, input).await?;
 
@@ -631,6 +665,7 @@ pub async fn generate_drafts_from_sources_db(
                                 text: None,
                                 image_url: Some(local_path.clone()),
                                 status: None,
+                                generation_rationale: None, // rationale already set at creation; don't overwrite
                             },
                         )
                         .await?;
@@ -729,6 +764,11 @@ mod tests {
         assert!(prompt.contains("BULLISH"));
         assert!(prompt.contains("NOT REGURGITATION"));
         assert!(prompt.contains("ONE CASHTAG MAX"));
+        // New stronger originality language (in system prompt rules)
+        assert!(prompt.contains("followed the story for months"));
+        assert!(prompt.contains("Re-express the core implication"));
+        assert!(prompt.contains("non-generic"));
+        assert!(prompt.contains("screenshotting"));
     }
 
     #[test]

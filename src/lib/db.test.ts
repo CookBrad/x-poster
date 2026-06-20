@@ -39,6 +39,7 @@ describe('db.ts - Tauri command wrappers', () => {
     updated_at: '2025-06-02T10:00:00Z',
     posted_at: null,
     x_post_id: null,
+    generation_rationale: null,
   }
 
   describe('createDraft', () => {
@@ -49,6 +50,7 @@ describe('db.ts - Tauri command wrappers', () => {
         text: 'New Tesla update',
         sources_json: '[]',
         image_url: null,
+        generation_rationale: null,
       }
 
       const result = await createDraft(input)
@@ -60,7 +62,7 @@ describe('db.ts - Tauri command wrappers', () => {
     it('propagates errors from the backend', async () => {
       mockInvoke.mockRejectedValueOnce(new Error('Database is locked'))
 
-      await expect(createDraft({ text: 'fail', sources_json: '[]' })).rejects.toThrow('Database is locked')
+      await expect(createDraft({ text: 'fail', sources_json: '[]', generation_rationale: null })).rejects.toThrow('Database is locked')
     })
   })
 
