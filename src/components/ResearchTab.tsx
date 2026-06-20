@@ -1,13 +1,16 @@
 import { useEffect, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import {
+  DRAFT_STYLE_OPTIONS,
   RESEARCH_MODE,
   RESEARCH_MODE_OPTIONS,
   RESEARCH_SOURCE_TYPE,
   SETTING_KEYS,
+  type DraftStyle,
   type ResearchMode,
 } from '../lib/constants'
 import {
+  generateDraftFromInput,
   generateDraftFromSource,
   generateDraftsFromLatestResearch,
   getAllHistoricalSources,
@@ -19,11 +22,14 @@ import {
 import {
   draftCountOptions,
   loadDraftGenerationCount,
+  loadDraftGenerationStyle,
   saveDraftGenerationCount,
+  saveDraftGenerationStyle,
 } from '../lib/draftGeneration'
 import { errorMessage } from '../lib/errors'
 import { researchModeLabel, researchModeRequiresXaiKey } from '../lib/researchMode'
 import { countUnusedResearchSources, isResearchSourceUsed } from '../lib/researchSource'
+import { CustomDraftInput } from './CustomDraftInput'
 import { formatResearchSourceDate, ResearchSourceCard } from './ResearchSourceCard'
 import { HistoricalSourcesList } from './HistoricalSourcesList'
 
@@ -36,10 +42,13 @@ export function ResearchTab() {
   const [historicalResetKey, setHistoricalResetKey] = useState(0)
   const [showResetConfirm, setShowResetConfirm] = useState(false)
   const [draftCount, setDraftCount] = useState(loadDraftGenerationCount)
+  const [draftStyle, setDraftStyle] = useState<DraftStyle>(loadDraftGenerationStyle)
   const [researchMode, setResearchMode] = useState<ResearchMode>(RESEARCH_MODE.both)
   const [loading, setLoading] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [generatingSourceId, setGeneratingSourceId] = useState<string | null>(null)
+  const [customInput, setCustomInput] = useState('')
+  const [generatingFromInput, setGeneratingFromInput] = useState(false)
   const [pipelinePhase, setPipelinePhase] = useState<'idle' | 'research' | 'generate'>('idle')
   const [isResetting, setIsResetting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -47,7 +56,8 @@ export function ResearchTab() {
   const [generateSuccess, setGenerateSuccess] = useState<string | null>(null)
 
   const isPipelineBusy = pipelinePhase !== 'idle'
-  const isBusy = loading || generating || isPipelineBusy || generatingSourceId !== null
+  const isBusy =
+    loading || generating || isPipelineBusy || generatingSourceId !== null || generatingFromInput
 
   const loadLatestRun = async () => {
     try {
@@ -82,6 +92,10 @@ export function ResearchTab() {
     }
   }
 
+  const handleDraftStyleChange = (value: string) => {
+    setDraftStyle(saveDraftGenerationStyle(value as DraftStyle))
+  }
+
   const handleDraftCountChange = (value: string) => {
     const parsed = Number.parseInt(value, 10)
     if (Number.isNaN(parsed)) {
@@ -90,13 +104,37 @@ export function ResearchTab() {
     setDraftCount(saveDraftGenerationCount(parsed))
   }
 
+  const handleGenerateFromInput = async () => {
+    const trimmed = customInput.trim()
+    if (!trimmed) {
+      return
+    }
+
+    setGeneratingFromInput(true)
+    setError(null)
+    setGenerateSuccess(null)
+
+    try {
+      const drafts = await generateDraftFromInput(trimmed, draftStyle)
+      setGenerateSuccess(
+        `Generated ${drafts.length} post(s) from your input. Open the Posts tab to review.`
+      )
+      setCustomInput('')
+    } catch (generateError: unknown) {
+      console.error(generateError)
+      setError(errorMessage(generateError, 'Failed to generate post from your input.'))
+    } finally {
+      setGeneratingFromInput(false)
+    }
+  }
+
   const handleGenerateFromSource = async (sourceId: string) => {
     setGeneratingSourceId(sourceId)
     setError(null)
     setGenerateSuccess(null)
 
     try {
-      const drafts = await generateDraftFromSource(sourceId)
+      const drafts = await generateDraftFromSource(sourceId, 1, draftStyle)
       setGenerateSuccess(
         `Generated ${drafts.length} post(s) from that story. Open the Posts tab to review.`
       )
@@ -115,9 +153,9 @@ export function ResearchTab() {
     setGenerateSuccess(null)
 
     try {
-      const drafts = await generateDraftsFromLatestResearch(draftCount)
+      const drafts = await generateDraftsFromLatestResearch(draftCount, draftStyle)
       setGenerateSuccess(
-        `Generated ${drafts.length} draft(s) with insight-focused prompts. Open the Posts tab to review.`
+        `Generated ${drafts.length} draft(s) in ${draftStyle} style. Open the Posts tab to review.`
       )
       await refreshResearchViews()
     } catch (generateError: unknown) {
@@ -141,9 +179,9 @@ export function ResearchTab() {
 
       phase = 'generate'
       setPipelinePhase('generate')
-      const drafts = await generateDraftsFromLatestResearch(draftCount)
+      const drafts = await generateDraftsFromLatestResearch(draftCount, draftStyle)
       setGenerateSuccess(
-        `Researched ${newRun.sources.length} source(s) and generated ${drafts.length} draft(s). Open the Posts tab to review.`
+        `Researched ${newRun.sources.length} source(s) and generated ${drafts.length} draft(s) in ${draftStyle} style. Open the Posts tab to review.`
       )
       await refreshResearchViews()
     } catch (pipelineError: unknown) {
@@ -306,6 +344,16 @@ export function ResearchTab() {
 
       {activeSubTab === 'current' && (
         <div>
+          <CustomDraftInput
+            value={customInput}
+            onChange={setCustomInput}
+            onGenerate={() => void handleGenerateFromInput()}
+            generating={generatingFromInput}
+            disabled={isBusy}
+            hasXaiKey={hasXaiKey}
+            draftStyle={draftStyle}
+          />
+
           <div className="card bg-base-200/60 mb-4">
             <div className="card-body py-4 gap-4">
               <div className="flex flex-wrap items-end gap-4">
@@ -342,6 +390,25 @@ export function ResearchTab() {
                     {draftCountOptions().map((count) => (
                       <option key={count} value={count}>
                         {count} {count === 1 ? 'post' : 'posts'}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="form-control w-full max-w-[11rem]">
+                  <div className="label py-0 pb-1">
+                    <span className="label-text font-medium">Post style</span>
+                  </div>
+                  <select
+                    className="select select-bordered select-sm w-full"
+                    value={draftStyle}
+                    onChange={(event) => handleDraftStyleChange(event.target.value)}
+                    disabled={isBusy}
+                    data-testid="draft-generation-style"
+                  >
+                    {DRAFT_STYLE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
                       </option>
                     ))}
                   </select>

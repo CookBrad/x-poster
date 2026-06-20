@@ -1,9 +1,13 @@
 import {
   clampDraftCount,
   DRAFT_COUNT_STORAGE_KEY,
+  DRAFT_STYLE_STORAGE_KEY,
   DEFAULT_DRAFT_GENERATION_COUNT,
+  DEFAULT_DRAFT_STYLE,
   MAX_DRAFT_GENERATION_COUNT,
   MIN_DRAFT_GENERATION_COUNT,
+  isDraftStyle,
+  type DraftStyle,
 } from './constants'
 
 export function draftCountOptions(): number[] {
@@ -37,4 +41,25 @@ export function saveDraftGenerationCount(count: number): number {
     /* ignore storage failures */
   }
   return clamped
+}
+
+export function loadDraftGenerationStyle(): DraftStyle {
+  try {
+    const stored = localStorage.getItem(DRAFT_STYLE_STORAGE_KEY)
+    if (stored && isDraftStyle(stored)) {
+      return stored
+    }
+    return DEFAULT_DRAFT_STYLE
+  } catch {
+    return DEFAULT_DRAFT_STYLE
+  }
+}
+
+export function saveDraftGenerationStyle(style: DraftStyle): DraftStyle {
+  try {
+    localStorage.setItem(DRAFT_STYLE_STORAGE_KEY, style)
+  } catch {
+    /* ignore storage failures */
+  }
+  return style
 }

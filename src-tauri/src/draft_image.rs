@@ -22,6 +22,31 @@ pub fn is_local_image_path(path: &str) -> bool {
     trimmed.starts_with('/') || trimmed.contains(":\\") || trimmed.starts_with("\\\\")
 }
 
+pub fn build_meme_image_generation_prompt(
+    draft_text: &str,
+    source: Option<&ResearchSource>,
+) -> String {
+    let topic: String = draft_text.chars().take(240).collect();
+    let source_hint = source
+        .map(|s| {
+            format!(
+                " Story context: {} — {}.",
+                s.title,
+                s.content.chars().take(120).collect::<String>()
+            )
+        })
+        .unwrap_or_default();
+
+    format!(
+        "Create a funny viral internet meme image for a social post about Elon Musk's companies \
+         (Tesla, SpaceX, xAI, Neuralink, Boring Company). Topic / caption: {topic}.{source_hint} \
+         Style: classic meme aesthetic — bold composition, humorous visual metaphor, expressive \
+         reaction energy, meme-template vibes. Bold meme-style text overlay is encouraged when it \
+         lands the joke. Cartoon, photo-manipulation, or reaction-image meme look. No watermarks, \
+         no stock-photo corporate polish."
+    )
+}
+
 pub fn build_image_generation_prompt(draft_text: &str, source: Option<&ResearchSource>) -> String {
     let topic: String = draft_text.chars().take(240).collect();
     let source_hint = source
@@ -45,6 +70,32 @@ pub fn extract_meta_image_url(html: &str) -> Option<String> {
         }
     }
     None
+}
+
+pub fn extract_meta_tag(html: &str, property: &str) -> Option<String> {
+    extract_meta_property_content(html, property)
+}
+
+pub fn extract_page_title_and_description(html: &str) -> (Option<String>, Option<String>) {
+    let title = extract_meta_tag(html, "og:title")
+        .or_else(|| extract_meta_tag(html, "twitter:title"))
+        .or_else(|| extract_title_tag(html));
+    let description = extract_meta_tag(html, "og:description")
+        .or_else(|| extract_meta_tag(html, "twitter:description"))
+        .or_else(|| extract_meta_tag(html, "description"));
+    (title, description)
+}
+
+fn extract_title_tag(html: &str) -> Option<String> {
+    let lower = html.to_lowercase();
+    let start = lower.find("<title>")? + "<title>".len();
+    let end = lower[start..].find("</title>")? + start;
+    let title = html[start..end].trim();
+    if title.is_empty() {
+        None
+    } else {
+        Some(title.to_string())
+    }
 }
 
 fn extract_meta_property_content(html: &str, property: &str) -> Option<String> {
@@ -294,6 +345,13 @@ mod tests {
             extract_meta_image_url(html),
             Some("https://cdn.example.com/hero.jpg".to_string())
         );
+    }
+
+    #[test]
+    fn test_build_meme_image_generation_prompt_mentions_meme_style() {
+        let prompt = build_meme_image_generation_prompt("POV: Robotaxi expanded again", None);
+        assert!(prompt.contains("meme"));
+        assert!(prompt.contains("POV: Robotaxi expanded again"));
     }
 
     #[test]

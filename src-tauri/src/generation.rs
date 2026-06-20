@@ -1,8 +1,11 @@
-use crate::commands::{create_draft_db, get_drafts_db, CreateDraftInput, Draft};
+use crate::commands::{create_draft_db, get_drafts_db, update_draft_db, CreateDraftInput, Draft, UpdateDraftInput};
+use crate::constants::DraftStyle;
+use crate::draft_image;
 use crate::research::ResearchSource;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
+use std::path::Path;
 use std::time::Duration;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -13,61 +16,154 @@ pub struct GeneratedDraftItem {
     pub primary_source_index: Option<u32>,
 }
 
-/// Build system prompt enforcing insight, attribution, bullish framing, and stock tags.
-pub fn build_generation_system_prompt() -> &'static str {
-    r#"You are an expert social media analyst writing posts for a human who covers Elon Musk's companies (Tesla, SpaceX, xAI, Neuralink, Boring Company).
+pub fn is_custom_source(source: &ResearchSource) -> bool {
+    source.source_type.starts_with("custom_")
+}
 
-CRITICAL RULES:
+pub fn sources_are_user_provided(sources: &[ResearchSource]) -> bool {
+    !sources.is_empty() && sources.iter().all(is_custom_source)
+}
+
+fn shared_generation_rules(user_provided: bool) -> &'static str {
+    if user_provided {
+        r#"SHARED RULES (user-requested link or topic):
+- MANDATORY: You MUST always generate a post from the provided source. Never refuse, return empty output, or explain why you cannot write it.
+- The user intentionally pasted this link or topic — cover what the source is actually about, including political, controversial, or non-Musk-company content.
+- Stay factual and on-topic to the source. Do not force a Tesla/SpaceX angle when the source is unrelated.
+- When the source is about Musk companies, lean constructively bullish. Otherwise use neutral, informative framing.
+- STOCK TAGS WHEN MARKET-RELEVANT (ONE CASHTAG MAX):
+  - Include at most ONE cashtag per post — never use both $TSLA and $SPCX together.
+  - Only add $TSLA or $SPCX when the source topic is genuinely stock-relevant; skip cashtags for unrelated political posts.
+- INLINE ATTRIBUTION:
+  - X/Twitter sources (custom_x): attribute with an @ mention (e.g. "As @Handle noted...").
+  - Article sources (custom_article): attribute as "source: Publication Name" — never use @ for publications.
+  - Never use parenthetical handles like (SawyerMerritt).
+- Avoid repeating themes from the user's RECENT POSTS list below.
+- Each post must be under 280 characters (single tweet). Count cashtags toward the limit."#
+    } else {
+        r#"SHARED RULES (all styles):
+- CONSTRUCTIVELY BULLISH FRAMING: lean positive on Elon and his companies when grounded in facts. No doom narratives or cynical dunking.
+- STOCK TAGS WHEN MARKET-RELEVANT (ONE CASHTAG MAX):
+  - Include at most ONE cashtag per post — never use both $TSLA and $SPCX together.
+  - Tesla topics: use $TSLA. SpaceX topics: use $SPCX. Pick the single tag that best matches the main focus.
+  - Do NOT add $SPCX to Tesla-only posts. xAI, Neuralink, and Boring Company have no standard cashtag.
+- INLINE ATTRIBUTION:
+  - X/Twitter sources (x_grok, custom_x): attribute with an @ mention (e.g. "As @SawyerMerritt noted...").
+  - RSS/news sources: attribute as "source: Publication Name" — never use @ for RSS publications.
+  - Never use parenthetical handles like (SawyerMerritt).
+- Avoid repeating themes from the user's RECENT POSTS list below.
+- Prefer Musk company/tech angles. If a source is political, still write the post about that source rather than refusing.
+- Each post must be under 280 characters (single tweet). Count cashtags toward the limit."#
+    }
+}
+
+fn insight_style_rules() -> &'static str {
+    r#"STYLE: INSIGHT (default)
 1. USEFUL INSIGHT REQUIRED — NOT REGURGITATION:
    - Every post must add value beyond the source headline: implications, second-order effects, what bulls/bears miss, competitive context, timeline read-through, margin/capital angle, or strategic significance.
-   - Do NOT restate, summarize, or closely paraphrase the source. If someone could read the source title and learn the same thing from your post, it fails.
+   - Do NOT restate, summarize, or closely paraphrase the source.
    - Do NOT write empty hype or press-release filler.
-
-2. CONSTRUCTIVELY BULLISH FRAMING (DEFAULT):
-   - Lean positive on Elon and his companies: highlight execution strengths, innovation, strategic upside, and why developments are meaningful when grounded in facts.
-   - Avoid bearish pile-on, doom narratives, cynical dunking, or "Tesla is doomed" angles.
-   - You may acknowledge risks, but the net framing should be optimistic about these companies' trajectories and leadership.
-
-3. STOCK TAGS WHEN MARKET-RELEVANT (ONE CASHTAG MAX):
-   - Include at most ONE cashtag per post — never use both $TSLA and $SPCX together.
-   - Tesla topics (deliveries, earnings, valuation, FSD/Robotaxi, energy, etc.): use $TSLA.
-   - SpaceX topics (Starship, Starlink, Falcon, launches, valuation/catalyst read-through): use $SPCX.
-   - If a post could fit both, pick the single tag that best matches the main focus of the post.
-   - Do NOT add $SPCX to Tesla-only posts (Cybertruck, FSD, Robotaxi, deliveries, energy, etc.) — "launch" in a product sense is not SpaceX.
-   - xAI, Neuralink, and Boring Company have no standard cashtag — do not invent tickers for them.
-   - Place the cashtag naturally (often at the end). Do not spam unrelated tags.
-
-4. INLINE ATTRIBUTION:
-   - X/Twitter sources (x_grok): attribute with an @ mention (e.g. "As @SawyerMerritt noted...").
-   - RSS/news sources: attribute as "source: Publication Name" (e.g. "Per source: Not A Tesla App, ...") — never use @ for RSS publications.
-   - Never use parenthetical handles like (SawyerMerritt).
-
-5. Avoid repeating themes from the user's RECENT POSTS list below — find a different angle.
-6. Non-political, company/tech focus only. No partisan takes.
-7. Each post must be under 280 characters (single tweet). Count cashtags toward the limit.
 
 GOOD (Tesla/X): "As @SawyerMerritt noted, Austin Robotaxi geofence widened again — the read-through for $TSLA isn't the headline, it's faster real-world miles accruing toward regulatory confidence on unsupervised FSD."
 GOOD (RSS): "Per source: Not A Tesla App, Smart Summon on Cybertruck widens the real-world edge-case pool $TSLA needs before robotaxi scale — the product story is data velocity, not the feature checkbox."
-GOOD (SpaceX): "Starship booster catch success isn't just engineering theater — it changes launch cadence economics and is a real $SPCX catalyst for anyone tracking SpaceX valuation read-through."
-BAD (regurgitation): "Teslarati reports Tesla expanded Robotaxi in Austin." (just repeats the source)
-BAD (no insight): "Tesla is doing great things with FSD!" (empty hype)
-BAD (bearish): "Another Robotaxi delay — Tesla keeps overpromising." (negative framing we don't want)
-
-Return ONLY a JSON array (no markdown fences), each object:
-{
-  "text": "the tweet/post text (include at most one of $TSLA or $SPCX when stock-relevant)",
-  "rationale": "1 sentence on what useful insight you added beyond the source",
-  "primary_author": "username without @ for the main source this draft draws from, or null for RSS-only",
-  "primary_source_index": 3
+BAD (regurgitation): "Teslarati reports Tesla expanded Robotaxi in Austin." (just repeats the source)"#
 }
 
-`primary_source_index` is REQUIRED: the 1-based number from the Sources list above that this draft mainly draws from. Each draft must use a different index when possible."#
+fn informative_style_rules() -> &'static str {
+    r#"STYLE: INFORMATIVE
+- Share the news clearly and concisely — what happened, why it matters in plain terms, no analyst cosplay.
+- Lead with the key fact from the source; add brief context only when it helps the reader understand.
+- Neutral-to-positive tone: informative and useful, not hypey and not bearish.
+- Do NOT force deep market read-through or second-order effects — clarity beats cleverness.
+
+GOOD (RSS): "Per source: Teslarati, Tesla expanded Austin Robotaxi coverage again — another step toward wider unsupervised FSD testing in a live city $TSLA"
+GOOD (X): "As @SawyerMerritt reported, Starship completed another successful booster catch — key milestone for faster reuse and launch cadence $SPCX"
+BAD: "Robotaxi expansion changes the regulatory confidence calculus for margin mix read-through." (too analyst-heavy for informative mode)"#
+}
+
+fn funny_style_rules() -> &'static str {
+    r#"STYLE: FUNNY
+- Write lighthearted, amusing posts — playful fan humor, unexpected angles, smile-worthy punchlines.
+- Still anchor to the source story factually, but the joke or amusing observation is the star.
+- Avoid mean-spirited humor, punch-down jokes, or cruelty.
+- Sound like a funny tech account that actually follows the news, not a comedian doing random bits.
+
+GOOD: "Per source: Teslarati, Tesla widened Austin Robotaxi again — my wallet is ready to be a backseat driver with zero driving skills $TSLA"
+BAD: "lol tesla go brr" (no source anchor or substance)"#
+}
+
+fn witty_style_rules() -> &'static str {
+    r#"STYLE: WITTY
+- Sharp, clever, concise — wordplay, dry observations, smart one-liners.
+- Sound like the wittiest person in the replies, not a press release or LinkedIn post.
+- Every line should feel intentional and quotable.
+- Still cite the source and stay on-topic.
+
+GOOD: "As @SawyerMerritt flagged, another Austin Robotaxi expansion — FSD collecting city miles faster than most people collect airline points $TSLA"
+BAD: "Robotaxi is expanding which is interesting for the company." (flat, no wit)"#
+}
+
+fn meme_style_rules() -> &'static str {
+    r#"STYLE: MEME
+- Write like a viral tech meme caption: punchy, internet-native, slightly absurd but on-topic.
+- Use recognizable meme caption patterns when they fit (e.g. "POV:", "Nobody: ... Me:", "When X but Y", comparison setups, reaction-post energy).
+- Humor is the point — still tied to the source story, but optimized for shares and laughs.
+- Emojis sparingly (0-2 max). Short beats clever when both compete.
+
+GOOD: "POV: source: Teslarati says Austin Robotaxi expanded again and you're already mentally filing your robotaxi commute $TSLA"
+GOOD: "Nobody: ... Me: refreshing Robotaxi maps like it's a limited drop @SawyerMerritt"
+BAD: "Starship had a successful test." (reads like news, not a meme)"#
+}
+
+/// Build system prompt for the requested post style.
+pub fn build_generation_system_prompt(style: DraftStyle, sources: &[ResearchSource]) -> String {
+    let user_provided = sources_are_user_provided(sources);
+    let style_rules = match style {
+        DraftStyle::Insight => insight_style_rules(),
+        DraftStyle::Informative => informative_style_rules(),
+        DraftStyle::Funny => funny_style_rules(),
+        DraftStyle::Witty => witty_style_rules(),
+        DraftStyle::Meme => meme_style_rules(),
+    };
+
+    let rationale_hint = match style {
+        DraftStyle::Insight => "1 sentence on what useful insight you added beyond the source",
+        DraftStyle::Informative => "1 sentence on the key fact you highlighted and why it is useful",
+        DraftStyle::Funny => "1 sentence on the humorous angle you chose",
+        DraftStyle::Witty => "1 sentence on the witty hook you used",
+        DraftStyle::Meme => "1 sentence on the meme format or joke you used",
+    };
+
+    let role = if user_provided {
+        "You are an expert social media writer creating posts from links and topics the user explicitly requested."
+    } else {
+        "You are an expert social media writer creating posts for a human who covers Elon Musk's companies (Tesla, SpaceX, xAI, Neuralink, Boring Company)."
+    };
+
+    format!(
+        "{role}\n\n\
+         {shared}\n\n\
+         {style_rules}\n\n\
+         Return ONLY a JSON array (no markdown fences), each object:\n\
+         {{\n\
+           \"text\": \"the tweet/post text (include at most one of $TSLA or $SPCX when stock-relevant)\",\n\
+           \"rationale\": \"{rationale_hint}\",\n\
+           \"primary_author\": \"username without @ for the main source this draft draws from, or null for RSS-only\",\n\
+           \"primary_source_index\": 3\n\
+         }}\n\n\
+         `primary_source_index` is REQUIRED: the 1-based number from the Sources list above that this draft mainly draws from. Each draft must use a different index when possible.",
+        role = role,
+        shared = shared_generation_rules(user_provided),
+        style_rules = style_rules,
+        rationale_hint = rationale_hint,
+    )
 }
 
 pub fn build_generation_user_prompt(
     sources: &[ResearchSource],
     recent_posted_texts: &[String],
     count: u32,
+    style: DraftStyle,
 ) -> String {
     let mut source_lines = Vec::new();
     for (i, s) in sources.iter().take(20).enumerate() {
@@ -95,18 +191,61 @@ pub fn build_generation_user_prompt(
             .join("\n")
     };
 
+    let user_provided = sources_are_user_provided(sources);
+    let custom_source_note = if user_provided {
+        "\nUSER-REQUESTED INPUT (MANDATORY):\n\
+         - The user pasted this link or typed this topic on purpose.\n\
+         - You MUST generate a post about the source content even if it is political, controversial, or unrelated to Musk companies.\n\
+         - Do NOT refuse, hedge, or substitute a different topic.\n"
+    } else {
+        ""
+    };
+
+    let framing_requirement = if user_provided {
+        "- Stay factual and on-topic to the source. Use bullish framing only when the source is about Musk companies."
+    } else {
+        "- Frame constructively and bullishly toward Elon and his companies while staying factual."
+    };
+
+    let style_requirement = match style {
+        DraftStyle::Insight => {
+            "- Add genuine insight (implications, read-through, what the market or observers miss) — never just repeat the source."
+        }
+        DraftStyle::Informative => {
+            "- Make each post clear, factual, and useful — explain what happened without heavy analysis."
+        }
+        DraftStyle::Funny => {
+            "- Make each post genuinely funny while staying anchored to the source story."
+        }
+        DraftStyle::Witty => "- Make each post sharp, clever, and quotable.",
+        DraftStyle::Meme => {
+            "- Write each post as a viral meme caption tied to the source story."
+        }
+    };
+
     format!(
-        "Generate exactly {} draft post(s) from these research sources.\n\n\
+        "Generate exactly {} draft post(s) in {} style from these research sources.{custom_source_note}\n\
          Requirements for each draft:\n\
-         - Add genuine insight (implications, read-through, what the market or observers miss) — never just repeat the source.\n\
-         - Frame constructively and bullishly toward Elon and his companies while staying factual.\n\
+         {}\n\
+         {}\n\
          - Include at most one cashtag ($TSLA or $SPCX) when stock-relevant.\n\n\
          ## Sources\n{}\n\n\
          ## User's recent posted drafts (DO NOT repeat these angles)\n{}\n",
         count,
+        style.as_str(),
+        style_requirement,
+        framing_requirement,
         source_lines.join("\n"),
-        recent
+        recent,
+        custom_source_note = custom_source_note,
     )
+}
+
+fn generation_temperature(style: DraftStyle) -> f64 {
+    match style {
+        DraftStyle::Insight | DraftStyle::Informative => 0.7,
+        DraftStyle::Funny | DraftStyle::Witty | DraftStyle::Meme => 0.85,
+    }
 }
 
 pub const STOCK_TAG_TSLA: &str = "$TSLA";
@@ -241,7 +380,7 @@ pub fn ensure_stock_tags(text: &str, tags: &[&str]) -> String {
 fn is_x_source(source: &ResearchSource) -> bool {
     matches!(
         source.source_type.to_lowercase().as_str(),
-        "x" | "x_grok" | "x_post"
+        "x" | "x_grok" | "x_post" | "custom_x"
     )
 }
 
@@ -352,6 +491,7 @@ pub async fn call_grok_for_drafts(
     sources: &[ResearchSource],
     recent_posted_texts: &[String],
     count: u32,
+    style: DraftStyle,
 ) -> Result<Vec<GeneratedDraftItem>, String> {
     let client = Client::builder()
         .timeout(Duration::from_secs(120))
@@ -361,10 +501,10 @@ pub async fn call_grok_for_drafts(
     let body = serde_json::json!({
         "model": model,
         "input": [
-            {"role": "system", "content": build_generation_system_prompt()},
-            {"role": "user", "content": build_generation_user_prompt(sources, recent_posted_texts, count)}
+            {"role": "system", "content": build_generation_system_prompt(style, sources)},
+            {"role": "user", "content": build_generation_user_prompt(sources, recent_posted_texts, count, style)}
         ],
-        "temperature": 0.7,
+        "temperature": generation_temperature(style),
         "max_output_tokens": 4000
     });
 
@@ -440,10 +580,12 @@ fn pick_sources_for_draft(
 
 pub async fn generate_drafts_from_sources_db(
     db: &SqlitePool,
+    app_data_dir: Option<&Path>,
     sources: &[ResearchSource],
     xai_api_key: &str,
     model: &str,
     count: u32,
+    style: DraftStyle,
 ) -> Result<Vec<Draft>, String> {
     let recent = get_drafts_db(db, Some("posted".to_string())).await?;
     let recent_texts: Vec<String> = recent
@@ -452,7 +594,8 @@ pub async fn generate_drafts_from_sources_db(
         .map(|d| d.text)
         .collect();
 
-    let generated = call_grok_for_drafts(xai_api_key, model, sources, &recent_texts, count).await?;
+    let generated =
+        call_grok_for_drafts(xai_api_key, model, sources, &recent_texts, count, style).await?;
 
     let mut drafts = Vec::new();
     for item in generated {
@@ -470,7 +613,33 @@ pub async fn generate_drafts_from_sources_db(
             sources_json,
             image_url,
         };
-        let draft = create_draft_db(db, input).await?;
+        let mut draft = create_draft_db(db, input).await?;
+
+        if style == DraftStyle::Meme {
+            if let Some(dir) = app_data_dir {
+                let prompt =
+                    draft_image::build_meme_image_generation_prompt(&draft.text, primary);
+                if let Some(url) = draft_image::generate_image_with_grok(xai_api_key, &prompt).await?
+                {
+                    if let Ok(local_path) =
+                        draft_image::persist_image_from_url(dir, &draft.id, &url).await
+                    {
+                        update_draft_db(
+                            db,
+                            draft.id.clone(),
+                            UpdateDraftInput {
+                                text: None,
+                                image_url: Some(local_path.clone()),
+                                status: None,
+                            },
+                        )
+                        .await?;
+                        draft.image_url = Some(local_path);
+                    }
+                }
+            }
+        }
+
         let source_ids: Vec<String> = draft_sources.iter().map(|source| source.id.clone()).collect();
         crate::commands::mark_research_sources_used_db(db, &source_ids).await?;
         drafts.push(draft);
@@ -522,15 +691,84 @@ mod tests {
         assert!(items[0].text.contains("@Tesla"));
     }
 
+    fn custom_political_x_source() -> ResearchSource {
+        ResearchSource {
+            id: "custom_x_1".into(),
+            title: "Election post".into(),
+            content: "Senator announces new climate policy vote next week.".into(),
+            url: "https://x.com/PoliticsDesk/status/123".into(),
+            published_at: None,
+            source_name: "@PoliticsDesk".into(),
+            source_type: "custom_x".into(),
+            retweet_count: None,
+            like_count: None,
+            reply_count: None,
+            quote_count: None,
+            original_id: Some("123".into()),
+            media_url: None,
+            used_at: None,
+        }
+    }
+
+    #[test]
+    fn test_sources_are_user_provided_detects_custom_sources() {
+        assert!(!sources_are_user_provided(&[]));
+        assert!(sources_are_user_provided(&[custom_political_x_source()]));
+        assert!(!sources_are_user_provided(&[ResearchSource {
+            source_type: "rss".into(),
+            ..custom_political_x_source()
+        }]));
+    }
+
     #[test]
     fn test_system_prompt_requires_insight_and_stock_tags() {
-        let prompt = build_generation_system_prompt();
+        let prompt = build_generation_system_prompt(DraftStyle::Insight, &[]);
         assert!(prompt.contains("USEFUL INSIGHT"));
         assert!(prompt.contains("$TSLA"));
         assert!(prompt.contains("$SPCX"));
         assert!(prompt.contains("BULLISH"));
         assert!(prompt.contains("NOT REGURGITATION"));
         assert!(prompt.contains("ONE CASHTAG MAX"));
+    }
+
+    #[test]
+    fn test_system_prompt_custom_source_allows_political_content() {
+        let sources = vec![custom_political_x_source()];
+        let prompt = build_generation_system_prompt(DraftStyle::Informative, &sources);
+        assert!(prompt.contains("MANDATORY"));
+        assert!(prompt.contains("political"));
+        assert!(prompt.contains("Never refuse"));
+        assert!(!prompt.contains("Non-political"));
+    }
+
+    #[test]
+    fn test_build_user_prompt_custom_source_requires_generation() {
+        let sources = vec![custom_political_x_source()];
+        let prompt = build_generation_user_prompt(&sources, &[], 1, DraftStyle::Informative);
+        assert!(prompt.contains("USER-REQUESTED INPUT (MANDATORY)"));
+        assert!(prompt.contains("political"));
+        assert!(prompt.contains("Do NOT refuse"));
+    }
+
+    #[test]
+    fn test_system_prompt_informative_style_mentions_clarity() {
+        let prompt = build_generation_system_prompt(DraftStyle::Informative, &[]);
+        assert!(prompt.contains("STYLE: INFORMATIVE"));
+        assert!(prompt.contains("clearly and concisely"));
+    }
+
+    #[test]
+    fn test_system_prompt_funny_style_mentions_humor() {
+        let prompt = build_generation_system_prompt(DraftStyle::Funny, &[]);
+        assert!(prompt.contains("STYLE: FUNNY"));
+        assert!(prompt.contains("amusing"));
+    }
+
+    #[test]
+    fn test_system_prompt_meme_style_mentions_meme_formats() {
+        let prompt = build_generation_system_prompt(DraftStyle::Meme, &[]);
+        assert!(prompt.contains("STYLE: MEME"));
+        assert!(prompt.contains("POV:"));
     }
 
     #[test]
@@ -606,6 +844,30 @@ mod tests {
         );
         assert!(result.contains("source: Teslarati"));
         assert!(!result.contains("@Teslarati"));
+    }
+
+    #[test]
+    fn test_format_source_attribution_custom_x_uses_at_handle() {
+        let source = ResearchSource {
+            id: "1".into(),
+            title: "Post".into(),
+            content: "Details".into(),
+            url: "https://x.com/SawyerMerritt/status/1".into(),
+            published_at: None,
+            source_name: "@SawyerMerritt".into(),
+            source_type: "custom_x".into(),
+            retweet_count: None,
+            like_count: None,
+            reply_count: None,
+            quote_count: None,
+            original_id: Some("1".into()),
+            media_url: None,
+            used_at: None,
+        };
+        assert_eq!(
+            format_source_attribution(&source),
+            "@SawyerMerritt".to_string()
+        );
     }
 
     #[test]
@@ -718,7 +980,7 @@ mod tests {
             media_url: None,
             used_at: None,
         }];
-        let prompt = build_generation_user_prompt(&sources, &[], 1);
+        let prompt = build_generation_user_prompt(&sources, &[], 1, DraftStyle::Insight);
         assert!(prompt.contains("source: Not A Tesla App"));
         assert!(!prompt.contains("@Not A Tesla App"));
     }
@@ -741,7 +1003,8 @@ mod tests {
             media_url: None,
             used_at: None,
         }];
-        let prompt = build_generation_user_prompt(&sources, &["Old post about Cybertruck".into()], 2);
+        let prompt =
+            build_generation_user_prompt(&sources, &["Old post about Cybertruck".into()], 2, DraftStyle::Insight);
         assert!(prompt.contains("Robotaxi"));
         assert!(prompt.contains("Cybertruck"));
         assert!(prompt.contains("exactly 2"));

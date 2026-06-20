@@ -1,9 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { DRAFT_COUNT_STORAGE_KEY } from './constants'
+import { DRAFT_COUNT_STORAGE_KEY, DRAFT_STYLE_STORAGE_KEY } from './constants'
 import {
   draftCountOptions,
   loadDraftGenerationCount,
+  loadDraftGenerationStyle,
   saveDraftGenerationCount,
+  saveDraftGenerationStyle,
 } from './draftGeneration'
 
 describe('draftGeneration', () => {
@@ -28,5 +30,15 @@ describe('draftGeneration', () => {
 
   it('exposes selector options from min to max', () => {
     expect(draftCountOptions()).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+  })
+
+  it('returns default style when nothing is stored', () => {
+    expect(loadDraftGenerationStyle()).toBe('insight')
+  })
+
+  it('persists and reloads draft style', () => {
+    expect(saveDraftGenerationStyle('meme')).toBe('meme')
+    expect(loadDraftGenerationStyle()).toBe('meme')
+    expect(localStorage.getItem(DRAFT_STYLE_STORAGE_KEY)).toBe('meme')
   })
 })

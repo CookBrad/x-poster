@@ -9,6 +9,7 @@ import {
   resetResearchData,
   getAllHistoricalSources,
   generateDraftFromSource,
+  generateDraftFromInput,
   generateDraftsFromLatestResearch,
   postDraftToX,
   hasXCredentials,
@@ -159,7 +160,10 @@ describe('db.ts - Tauri command wrappers', () => {
 
       const result = await generateDraftsFromLatestResearch(3)
 
-      expect(mockInvoke).toHaveBeenCalledWith('generate_drafts_from_latest_research', { count: 3 })
+      expect(mockInvoke).toHaveBeenCalledWith('generate_drafts_from_latest_research', {
+        count: 3,
+        style: 'insight',
+      })
       expect(result).toHaveLength(1)
     })
 
@@ -171,6 +175,19 @@ describe('db.ts - Tauri command wrappers', () => {
       expect(mockInvoke).toHaveBeenCalledWith('generate_draft_from_source', {
         sourceId: 'source-42',
         count: 1,
+        style: 'insight',
+      })
+      expect(result).toHaveLength(1)
+    })
+
+    it('calls generate_draft_from_input', async () => {
+      mockInvoke.mockResolvedValueOnce([mockDraft])
+
+      const result = await generateDraftFromInput('https://example.com/story')
+
+      expect(mockInvoke).toHaveBeenCalledWith('generate_draft_from_input', {
+        input: 'https://example.com/story',
+        style: 'insight',
       })
       expect(result).toHaveLength(1)
     })

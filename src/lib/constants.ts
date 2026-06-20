@@ -20,6 +20,31 @@ export const MIN_DRAFT_GENERATION_COUNT = 1
 export const DEFAULT_DRAFT_GENERATION_COUNT = 3
 export const MAX_DRAFT_GENERATION_COUNT = 10
 export const DRAFT_COUNT_STORAGE_KEY = 'draft_generation_count'
+export const DRAFT_STYLE_STORAGE_KEY = 'draft_generation_style'
+
+export const DRAFT_STYLE = {
+  insight: 'insight',
+  informative: 'informative',
+  funny: 'funny',
+  witty: 'witty',
+  meme: 'meme',
+} as const
+
+export type DraftStyle = (typeof DRAFT_STYLE)[keyof typeof DRAFT_STYLE]
+
+export const DRAFT_STYLE_OPTIONS: { value: DraftStyle; label: string }[] = [
+  { value: DRAFT_STYLE.insight, label: 'Insight' },
+  { value: DRAFT_STYLE.informative, label: 'Informative' },
+  { value: DRAFT_STYLE.funny, label: 'Funny' },
+  { value: DRAFT_STYLE.witty, label: 'Witty' },
+  { value: DRAFT_STYLE.meme, label: 'Meme' },
+]
+
+export const DEFAULT_DRAFT_STYLE: DraftStyle = DRAFT_STYLE.insight
+
+export function isDraftStyle(value: string): value is DraftStyle {
+  return (Object.values(DRAFT_STYLE) as string[]).includes(value)
+}
 
 export function clampDraftCount(count: number): number {
   return Math.min(

@@ -157,13 +157,72 @@ pub async fn download_image(url: &str) -> Result<Vec<u8>, String> {
     Ok(bytes.to_vec())
 }
 
-pub async fn fetch_tweet_photo_url(
+#[derive(Debug, Clone)]
+pub struct TweetSourceDetails {
+    pub text: String,
+    pub author: String,
+    pub media_url: Option<String>,
+    pub tweet_id: Option<String>,
+}
+
+fn photo_url_from_tweet_json(json: &serde_json::Value) -> Option<String> {
+    let media = json["includes"]["media"].as_array();
+    let keys = json["data"]["attachments"]["media_keys"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+
+    if let Some(media_arr) = media {
+        for key in keys {
+            let key_str = key.as_str().unwrap_or("");
+            for item in media_arr {
+                if item["media_key"].as_str() == Some(key_str) {
+                    let media_type = item["type"].as_str().unwrap_or("");
+                    if media_type == "photo" {
+                        if let Some(url) = item["url"].as_str() {
+                            return Some(url.to_string());
+                        }
+                        if let Some(url) = item["preview_image_url"].as_str() {
+                            return Some(url.to_string());
+                        }
+                    }
+                }
+            }
+        }
+        for item in media_arr {
+            if item["type"].as_str() == Some("photo") {
+                if let Some(url) = item["url"].as_str() {
+                    return Some(url.to_string());
+                }
+            }
+        }
+    }
+
+    None
+}
+
+fn author_from_tweet_json(json: &serde_json::Value) -> String {
+    let author_id = json["data"]["author_id"].as_str().unwrap_or("");
+    if let Some(users) = json["includes"]["users"].as_array() {
+        for user in users {
+            if user["id"].as_str() == Some(author_id) {
+                if let Some(username) = user["username"].as_str() {
+                    return format!("@{username}");
+                }
+            }
+        }
+    }
+    "@unknown".to_string()
+}
+
+async fn fetch_tweet_lookup_json(
     creds: &XCredentials,
     tweet_id: &str,
-) -> Result<Option<String>, String> {
+    fields: &str,
+) -> Result<Option<serde_json::Value>, String> {
     let url = format!(
-        "https://api.twitter.com/2/tweets/{}?tweet.fields=attachments&expansions=attachments.media_keys&media.fields=url,preview_image_url,type",
-        tweet_id
+        "https://api.twitter.com/2/tweets/{}?{}",
+        tweet_id, fields
     );
     let auth = crate::x_post::oauth_get_header(&url, creds)?;
 
@@ -184,7 +243,7 @@ pub async fn fetch_tweet_photo_url(
 
     if !status.is_success() {
         log::warn!(
-            "fetch_tweet_photo_url: tweet {} lookup failed ({}): {}",
+            "fetch_tweet_lookup_json: tweet {} lookup failed ({}): {}",
             tweet_id,
             status,
             body
@@ -195,40 +254,43 @@ pub async fn fetch_tweet_photo_url(
     let json: serde_json::Value =
         serde_json::from_str(&body).map_err(|e| format!("Invalid tweet lookup response: {}", e))?;
 
-    let media = json["includes"]["media"].as_array();
-    let keys = json["data"]["attachments"]["media_keys"]
-        .as_array()
-        .cloned()
-        .unwrap_or_default();
+    Ok(Some(json))
+}
 
-    if let Some(media_arr) = media {
-        for key in keys {
-            let key_str = key.as_str().unwrap_or("");
-            for item in media_arr {
-                if item["media_key"].as_str() == Some(key_str) {
-                    let media_type = item["type"].as_str().unwrap_or("");
-                    if media_type == "photo" {
-                        if let Some(url) = item["url"].as_str() {
-                            return Ok(Some(url.to_string()));
-                        }
-                        if let Some(url) = item["preview_image_url"].as_str() {
-                            return Ok(Some(url.to_string()));
-                        }
-                    }
-                }
-            }
-        }
-        // Fallback: first photo in includes
-        for item in media_arr {
-            if item["type"].as_str() == Some("photo") {
-                if let Some(url) = item["url"].as_str() {
-                    return Ok(Some(url.to_string()));
-                }
-            }
-        }
-    }
+pub async fn fetch_tweet_source_details(
+    creds: &XCredentials,
+    tweet_id: &str,
+) -> Result<Option<TweetSourceDetails>, String> {
+    let fields = "tweet.fields=text,attachments&expansions=attachments.media_keys,author_id&media.fields=url,preview_image_url,type&user.fields=username";
+    let json = fetch_tweet_lookup_json(creds, tweet_id, fields).await?;
+    let Some(json) = json else {
+        return Ok(None);
+    };
 
-    Ok(None)
+    let text = json["data"]["text"]
+        .as_str()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+
+    let Some(text) = text else {
+        return Ok(None);
+    };
+
+    Ok(Some(TweetSourceDetails {
+        author: author_from_tweet_json(&json),
+        media_url: photo_url_from_tweet_json(&json),
+        text,
+        tweet_id: Some(tweet_id.to_string()),
+    }))
+}
+
+pub async fn fetch_tweet_photo_url(
+    creds: &XCredentials,
+    tweet_id: &str,
+) -> Result<Option<String>, String> {
+    let fields = "tweet.fields=attachments&expansions=attachments.media_keys&media.fields=url,preview_image_url,type";
+    let json = fetch_tweet_lookup_json(creds, tweet_id, fields).await?;
+    Ok(json.as_ref().and_then(photo_url_from_tweet_json))
 }
 
 pub async fn upload_media_image(creds: &XCredentials, bytes: &[u8]) -> Result<String, String> {

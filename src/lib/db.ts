@@ -1,5 +1,10 @@
 import { invoke } from '@tauri-apps/api/core'
-import { DEFAULT_DRAFT_GENERATION_COUNT, type DraftStatus } from './constants'
+import {
+  DEFAULT_DRAFT_GENERATION_COUNT,
+  DEFAULT_DRAFT_STYLE,
+  type DraftStatus,
+  type DraftStyle,
+} from './constants'
 
 export interface Draft {
   id: string
@@ -144,16 +149,25 @@ export async function resetResearchData(): Promise<ResetResearchResult> {
 }
 
 export async function generateDraftsFromLatestResearch(
-  count = DEFAULT_DRAFT_GENERATION_COUNT
+  count = DEFAULT_DRAFT_GENERATION_COUNT,
+  style: DraftStyle = DEFAULT_DRAFT_STYLE
 ): Promise<Draft[]> {
-  return invoke<Draft[]>('generate_drafts_from_latest_research', { count });
+  return invoke<Draft[]>('generate_drafts_from_latest_research', { count, style });
 }
 
 export async function generateDraftFromSource(
   sourceId: string,
-  count = 1
+  count = 1,
+  style: DraftStyle = DEFAULT_DRAFT_STYLE
 ): Promise<Draft[]> {
-  return invoke<Draft[]>('generate_draft_from_source', { sourceId, count });
+  return invoke<Draft[]>('generate_draft_from_source', { sourceId, count, style });
+}
+
+export async function generateDraftFromInput(
+  input: string,
+  style: DraftStyle = DEFAULT_DRAFT_STYLE
+): Promise<Draft[]> {
+  return invoke<Draft[]>('generate_draft_from_input', { input, style });
 }
 
 export async function postDraftToX(id: string): Promise<Draft> {

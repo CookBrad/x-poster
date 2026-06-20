@@ -301,6 +301,33 @@ This section captures key discussions from conversations so future sessions can 
 
 ---
 
+### 2026-06-04 — Custom draft inputs, per-source generation, image support, ResearchTab component extract
+
+**What was implemented:**
+- Extracted the entire ResearchTab (Current/Historical + all research + generation UI) out of App.tsx into `src/components/ResearchTab.tsx` (cleaner separation; imports new generation functions, CustomDraftInput, style/mode constants, unused-source trackers).
+- New `CustomDraftInput` component + test: free-form textarea for custom prompt/text/URL/X post, DraftStyle selector (insight / informative / funny / meme), Generate button. Handles disabled states (no key, empty, busy).
+- Backend custom source support (`src-tauri/src/custom_source.rs`): URL detection/normalization, X vs non-X classification so custom inputs (including direct X post URLs) can feed generation the same as research sources.
+- New `draft_image.rs`: helpers to extract OpenGraph/Twitter meta images, page titles, descriptions from web pages or X sources for attaching relevant images to generated drafts.
+- Large updates to `generation.rs`: prompt builders for custom inputs vs per-research-source vs bulk-from-latest; style-specific system prompts; enforcement of at most one stock cashtag per draft; logic to mark/track used research sources so they are excluded from future bulk runs.
+- `x_media.rs` expanded for fetching tweet source details, preview images, matching primary source.
+- Frontend: `src/lib/draftGeneration.ts` + `constants.ts` (DRAFT_STYLE, options, persisted count + style loaders/savers); `db.ts` new invokes (`generateDraftFromInput`, `generateDraftFromSource`, `generateDraftsFromLatestResearch`); `researchSource.ts` utils (`countUnusedResearchSources`, `isResearchSourceUsed`); ResearchTab now has per-source "Generate" buttons, custom input section at top, style + count controls, pipeline phases (research → generate), success toasts.
+- Command wiring + small Cargo.toml/lock updates (http-range and Tauri features for media/range requests).
+- Tests: dozens of new/passing Rust tests (generation::tests for custom source prompts, stock tag limit=1, system prompts per style, unused sources filter, build_user_prompt variants, x_media preview, etc.) + Vitest updates for the new components and generation flows. All 48 Rust + relevant frontend tests green.
+
+**Rationale / user value:**
+- Users can now generate a single high-quality draft for one specific research story (the "per-story" flow) instead of only bulk.
+- Free-form custom instructions or pasting a specific X post / article URL bypasses or augments the research step.
+- Drafts can include relevant images pulled from the source.
+- Source usage tracking prevents the same research items from being re-generated in bulk runs.
+- UI is now in focused component files following the established patterns (one concern per file).
+- Style selection lets user choose tone (insightful default, etc.).
+
+**Tests:** Mandatory coverage added for all new paths.
+
+**Next steps implied:** Wire the new generation calls into Queue, image selection/approval in the draft flow, full human-in-loop review for custom + per-source drafts.
+
+---
+
 ### 2026-06-04 — Phase 1 MVP completed
 
 **Shipped:**

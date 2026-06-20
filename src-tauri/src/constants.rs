@@ -18,3 +18,35 @@ pub const DEFAULT_GROK_MODEL: &str = "grok-4.3";
 pub const DEFAULT_DRAFT_COUNT: u32 = 3;
 pub const MAX_DRAFT_COUNT: u32 = 10;
 pub const RESEARCH_SOURCE_LIMIT: usize = 30;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DraftStyle {
+    #[default]
+    Insight,
+    Informative,
+    Funny,
+    Witty,
+    Meme,
+}
+
+impl DraftStyle {
+    pub fn parse(value: &str) -> Self {
+        match value.trim().to_lowercase().as_str() {
+            "informative" => Self::Informative,
+            "funny" => Self::Funny,
+            "witty" => Self::Witty,
+            "meme" => Self::Meme,
+            _ => Self::Insight,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Insight => "insight",
+            Self::Informative => "informative",
+            Self::Funny => "funny",
+            Self::Witty => "witty",
+            Self::Meme => "meme",
+        }
+    }
+}

@@ -25,9 +25,12 @@ describe('ResearchTab', () => {
 
     expect(screen.getByTestId('research-mode')).toHaveValue('both')
     expect(screen.getByTestId('draft-generation-count')).toHaveValue('3')
+    expect(screen.getByTestId('draft-generation-style')).toHaveValue('insight')
     expect(screen.getByTestId('research-button')).toHaveTextContent('Research')
     expect(screen.getByTestId('generate-button')).toHaveTextContent('Generate')
     expect(screen.getByTestId('run-all-button')).toHaveTextContent('Run All')
+    expect(screen.getByTestId('custom-draft-input')).toBeInTheDocument()
+    expect(screen.getByTestId('custom-draft-generate')).toHaveTextContent('Generate Post')
   })
 
   it('disables X research when no xAI key is saved', () => {

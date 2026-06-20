@@ -1,9 +1,9 @@
 use crate::{
     constants::{
-        draft_status, settings, DEFAULT_DRAFT_COUNT, DEFAULT_GROK_MODEL, MAX_DRAFT_COUNT,
-        RESEARCH_SOURCE_LIMIT,
+        draft_status, settings, DraftStyle, DEFAULT_DRAFT_COUNT, DEFAULT_GROK_MODEL,
+        MAX_DRAFT_COUNT, RESEARCH_SOURCE_LIMIT,
     },
-    draft_image, generation, research, x_media, x_post, AppState,
+    custom_source, draft_image, generation, research, x_media, x_post, AppState,
 };
 use std::path::Path;
 use serde::{Deserialize, Serialize};
@@ -988,6 +988,7 @@ pub async fn mark_research_sources_used_db(
 pub async fn generate_drafts_from_latest_research(
     state: State<'_, AppState>,
     count: Option<u32>,
+    style: Option<String>,
 ) -> Result<Vec<Draft>, String> {
     let requested_count = count.unwrap_or(DEFAULT_DRAFT_COUNT).clamp(1, MAX_DRAFT_COUNT);
 
@@ -1009,18 +1010,26 @@ pub async fn generate_drafts_from_latest_research(
     let xai_key = require_xai_api_key(&state.db).await?;
     let (_, grok_model) = load_grok_settings(&state.db).await?;
 
+    let draft_style = style
+        .as_deref()
+        .map(DraftStyle::parse)
+        .unwrap_or_default();
+
     log::info!(
-        "generate_drafts_from_latest_research: {} unused sources, count={}",
+        "generate_drafts_from_latest_research: {} unused sources, count={}, style={}",
         unused_sources.len(),
-        count
+        count,
+        draft_style.as_str()
     );
 
     generation::generate_drafts_from_sources_db(
         &state.db,
+        Some(&state.app_data_dir),
         &unused_sources,
         &xai_key,
         &grok_model,
         count,
+        draft_style,
     )
     .await
 }
@@ -1042,6 +1051,7 @@ pub async fn generate_draft_from_source(
     state: State<'_, AppState>,
     source_id: String,
     count: Option<u32>,
+    style: Option<String>,
 ) -> Result<Vec<Draft>, String> {
     let count = count.unwrap_or(1).clamp(1, MAX_DRAFT_COUNT);
     let source = fetch_research_source_by_id(&state.db, &source_id).await?;
@@ -1054,18 +1064,66 @@ pub async fn generate_draft_from_source(
     let xai_key = require_xai_api_key(&state.db).await?;
     let (_, grok_model) = load_grok_settings(&state.db).await?;
 
+    let draft_style = style
+        .as_deref()
+        .map(DraftStyle::parse)
+        .unwrap_or_default();
+
     log::info!(
-        "generate_draft_from_source: source_id={}, count={}",
+        "generate_draft_from_source: source_id={}, count={}, style={}",
         source_id,
-        count
+        count,
+        draft_style.as_str()
     );
 
     generation::generate_drafts_from_sources_db(
         &state.db,
+        Some(&state.app_data_dir),
         std::slice::from_ref(&source),
         &xai_key,
         &grok_model,
         count,
+        draft_style,
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn generate_draft_from_input(
+    state: State<'_, AppState>,
+    input: String,
+    style: Option<String>,
+) -> Result<Vec<Draft>, String> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return Err("Enter a link or topic.".to_string());
+    }
+
+    let xai_key = require_xai_api_key(&state.db).await?;
+    let (_, grok_model) = load_grok_settings(&state.db).await?;
+    let creds = load_x_credentials_db(&state.db).await.ok();
+
+    let draft_style = style
+        .as_deref()
+        .map(DraftStyle::parse)
+        .unwrap_or_default();
+
+    log::info!(
+        "generate_draft_from_input: input_len={}, style={}",
+        trimmed.len(),
+        draft_style.as_str()
+    );
+
+    let source = custom_source::resolve_custom_input(trimmed, creds.as_ref()).await?;
+
+    generation::generate_drafts_from_sources_db(
+        &state.db,
+        Some(&state.app_data_dir),
+        std::slice::from_ref(&source),
+        &xai_key,
+        &grok_model,
+        1,
+        draft_style,
     )
     .await
 }

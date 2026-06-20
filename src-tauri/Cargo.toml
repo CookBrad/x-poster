@@ -37,6 +37,7 @@ hmac = "0.12"
 sha1 = "0.10"
 base64 = "0.22"
 urlencoding = "2"
+url = "2"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
