@@ -59,14 +59,10 @@ export function ResearchSourceCard({
         <div className="flex justify-between items-start gap-3">
           <div className="min-w-0 flex-1">
             {url ? (
-              <a
-                href={url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="font-medium hover:underline text-sm"
+              <span
+                className="font-medium hover:underline text-sm cursor-pointer"
                 onClick={async (event) => {
                   event.stopPropagation()
-                  event.preventDefault()
                   try {
                     await openUrl(url)
                   } catch (err) {
@@ -76,7 +72,7 @@ export function ResearchSourceCard({
                 }}
               >
                 {title}
-              </a>
+              </span>
             ) : (
               <span className="font-medium text-sm">{title}</span>
             )}

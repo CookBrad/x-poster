@@ -104,10 +104,8 @@ export function SettingsTab() {
               <h3 className="text-lg font-semibold">Research & draft generation</h3>
               <p className="text-sm opacity-70 mt-1">
                 Powers Grok research on the Research tab and generating draft posts. Get a key from{' '}
-                <a
-                  href="https://console.x.ai/"
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <span
+                  className="link link-primary cursor-pointer"
                   onClick={async (e) => {
                     e.preventDefault()
                     try {
@@ -117,10 +115,9 @@ export function SettingsTab() {
                       window.open('https://console.x.ai/', '_blank')
                     }
                   }}
-                  className="link link-primary"
                 >
                   console.x.ai
-                </a>
+                </span>
                 .
               </p>
             </div>
@@ -141,10 +138,8 @@ export function SettingsTab() {
               <h3 className="text-lg font-semibold">Posting to X</h3>
               <p className="text-sm opacity-70 mt-1">
                 OAuth 1.0a credentials for publishing approved drafts. Create an app at{' '}
-                <a
-                  href="https://developer.x.com/"
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <span
+                  className="link link-primary cursor-pointer"
                   onClick={async (e) => {
                     e.preventDefault()
                     try {
@@ -154,10 +149,9 @@ export function SettingsTab() {
                       window.open('https://developer.x.com/', '_blank')
                     }
                   }}
-                  className="link link-primary"
                 >
                   developer.x.com
-                </a>
+                </span>
                 .
               </p>
             </div>

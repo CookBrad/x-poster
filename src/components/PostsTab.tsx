@@ -15,10 +15,9 @@ import {
   buildXPostUrl,
   countDraftsByStatus,
   formatDraftTimestamp,
-  formatSourceLabels,
+  formatSourceLabel,
   isPendingDraft,
   isPostedDraft,
-  isXSource,
 } from '../lib/draftUtils'
 import { DraftEditModal } from './DraftEditModal'
 import { DraftImage } from './DraftImage'
@@ -308,7 +307,6 @@ function DraftCard({
   onDelete,
   onImageResolved,
 }: DraftCardProps) {
-  const sourceLabels = formatSourceLabels(draft)
   const xUrl = buildXPostUrl(draft.x_post_id)
 
   return (
@@ -323,35 +321,43 @@ function DraftCard({
 
         <DraftImage draft={draft} onResolved={onImageResolved} />
 
-        {sourceLabels && (
-          <div className="text-xs opacity-60 mt-2">Sources: {sourceLabels}</div>
-        )}
         {(() => {
           const srcs = parseSources(draft)
-          const withUrls = srcs.filter((s: any) => s.url)
-          if (withUrls.length === 0) return null
+          if (srcs.length === 0) return null
           return (
-            <div className="text-[10px] opacity-50 mt-0.5">
-              {withUrls.map((s: any, i: number) => (
-                <a
-                  key={i}
-                  href={s.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="hover:underline mr-2"
-                  onClick={async (e) => {
-                    e.preventDefault()
-                    try {
-                      await openUrl(s.url!)
-                    } catch (err) {
-                      console.error('Failed to open URL via opener, falling back', err)
-                      window.open(s.url!, '_blank')
-                    }
-                  }}
-                >
-                  {isXSource(s) ? 'view original X post' : 'view source'}
-                </a>
-              ))}
+            <div className="text-xs opacity-60 mt-2">
+              Sources:{' '}
+              {srcs.map((s: any, i: number) => {
+                const label = formatSourceLabel(s) || 'Source'
+                const hasUrl = !!s.url
+                if (hasUrl) {
+                  return (
+                    <span
+                      key={i}
+                      className="link link-primary cursor-pointer"
+                      title={s.url}
+                      onClick={async (e) => {
+                        e.stopPropagation()
+                        try {
+                          await openUrl(s.url)
+                        } catch (err) {
+                          console.error('Failed to open URL via opener, falling back', err)
+                          window.open(s.url, '_blank')
+                        }
+                      }}
+                    >
+                      {label}
+                      {i < srcs.length - 1 ? ', ' : ''}
+                    </span>
+                  )
+                }
+                return (
+                  <span key={i}>
+                    {label}
+                    {i < srcs.length - 1 ? ', ' : ''}
+                  </span>
+                )
+              })}
             </div>
           )
         })()}
@@ -359,13 +365,10 @@ function DraftCard({
         {draft.x_post_id && (
           <div className="text-xs text-success mt-1">
             {xUrl ? (
-              <a
-                href={xUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="link link-primary"
+              <span
+                className="link link-primary cursor-pointer"
                 onClick={async (e) => {
-                  e.preventDefault()
+                  e.stopPropagation()
                   try {
                     await openUrl(xUrl)
                   } catch (err) {
@@ -375,7 +378,7 @@ function DraftCard({
                 }}
               >
                 View on X →
-              </a>
+              </span>
             ) : (
               <>Posted as: {draft.x_post_id}</>
             )}

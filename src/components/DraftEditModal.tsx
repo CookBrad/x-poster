@@ -90,17 +90,14 @@ export function DraftEditModal({ draft, open, onClose, onSaved }: DraftEditModal
             <ul className="text-xs opacity-60 mt-1 list-disc list-inside">
               {sources.map((s: { title?: string; user?: string; source?: string; url?: string }, i: number) => {
                 const label = s.title || s.user || s.source || 'Source'
-                return (
-                  <li key={i}>
-                    {label}
-                    {s.url && (
-                      <a
-                        href={s.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="ml-1 text-[10px] text-primary hover:underline"
+                if (s.url) {
+                  return (
+                    <li key={i}>
+                      <span
+                        className="link link-primary cursor-pointer"
+                        title={s.url}
                         onClick={async (e) => {
-                          e.preventDefault()
+                          e.stopPropagation()
                           try {
                             await openUrl(s.url!)
                           } catch (err) {
@@ -109,11 +106,12 @@ export function DraftEditModal({ draft, open, onClose, onSaved }: DraftEditModal
                           }
                         }}
                       >
-                        (direct link)
-                      </a>
-                    )}
-                  </li>
-                )
+                        {label}
+                      </span>
+                    </li>
+                  )
+                }
+                return <li key={i}>{label}</li>
               })}
             </ul>
             <p className="text-[10px] opacity-50 mt-1">
