@@ -27,6 +27,9 @@ export interface DraftSource {
   source_name?: string
   title?: string
   text?: string
+  url?: string
+  published_at?: string | null
+  original_id?: string
 }
 
 export interface CreateDraftInput {

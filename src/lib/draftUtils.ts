@@ -35,15 +35,16 @@ export function formatSourceLabel(source: DraftSource): string | undefined {
   if (!rawName) return undefined
 
   const name = rawName.trim().replace(/^@/, '')
+  const url = source.url ? ` ${source.url}` : ''
   if (isRssSource(source)) {
-    return `source: ${name}`
+    return `source: ${name}${url}`
   }
 
   if (isXSource(source) || source.user) {
-    return `@${name}`
+    return `@${name}${url}`
   }
 
-  return name
+  return name + url
 }
 
 export function formatSourceLabels(draft: Draft): string {

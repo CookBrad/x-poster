@@ -87,9 +87,24 @@ export function DraftEditModal({ draft, open, onClose, onSaved }: DraftEditModal
           <div className="mb-3">
             <span className="text-xs font-medium opacity-70">Research sources used</span>
             <ul className="text-xs opacity-60 mt-1 list-disc list-inside">
-              {sources.map((s: { title?: string; user?: string; source?: string }, i: number) => (
-                <li key={i}>{s.title || s.user || s.source || 'Source'}</li>
-              ))}
+              {sources.map((s: { title?: string; user?: string; source?: string; url?: string }, i: number) => {
+                const label = s.title || s.user || s.source || 'Source'
+                return (
+                  <li key={i}>
+                    {label}
+                    {s.url && (
+                      <a
+                        href={s.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="ml-1 text-[10px] text-primary hover:underline"
+                      >
+                        (direct link)
+                      </a>
+                    )}
+                  </li>
+                )
+              })}
             </ul>
             <p className="text-[10px] opacity-50 mt-1">
               Drafts aim for useful insight (not headline regurgitation), constructive bullish framing on

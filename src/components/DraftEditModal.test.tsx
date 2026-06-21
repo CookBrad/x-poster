@@ -5,7 +5,7 @@ import { updateDraft, type Draft } from '../lib/db'
 
 vi.mock('../lib/db', () => ({
   updateDraft: vi.fn(),
-  parseSources: vi.fn(() => [{ title: 'Teslarati article' }]),
+  parseSources: vi.fn(() => [{ title: 'Teslarati article', url: 'https://example.com/tesla' }]),
 }))
 
 const mockUpdateDraft = vi.mocked(updateDraft)
