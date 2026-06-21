@@ -100,8 +100,10 @@ fn research_source_from_x_url_fallback(url: &str) -> ResearchSource {
         id: format!("custom_x_{}", uuid::Uuid::new_v4()),
         title: "X post".to_string(),
         content: format!(
-            "Generate a post based on this X/Twitter link. Use your knowledge of the post and author when possible, \
-             including political or controversial posts if that is what the link contains.\nURL: {url}"
+            "The user pasted this *specific* X/Twitter post URL: {url} by {author}. \
+             Generate a high-quality draft post that is directly based on and faithful to the actual content and main idea of *that exact post*. \
+             Do not substitute a different topic or angle. Use your best knowledge of what was in that specific post to create an engaging, standalone X post that accurately captures its key points or story. \
+             (Exact text could not be fetched at resolution time because no X credentials were available; stay as close as possible to the known content of this post.)\nURL: {url}"
         ),
         url: url.to_string(),
         published_at: Some(Utc::now()),
