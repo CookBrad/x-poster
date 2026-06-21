@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "x-poster",
   "version": "0.1.0",
-  "identifier": "x-poster",
+  "identifier": "com.bradleycook.xposter",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
