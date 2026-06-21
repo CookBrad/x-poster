@@ -60,7 +60,7 @@ export function ResearchSourceCard({
           <div className="min-w-0 flex-1">
             {url ? (
               <span
-                className="font-medium hover:underline text-sm cursor-pointer"
+                className="link link-primary font-medium text-sm cursor-pointer"
                 onClick={async (event) => {
                   event.stopPropagation()
                   try {

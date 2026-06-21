@@ -156,13 +156,22 @@ select,
   color: #22d3ee !important;
 }
 
-/* General links in research */
-a.font-medium {
-  color: #c084fc !important;
+/* External / out-of-app links: all clickable source titles, X post links, settings help links etc.
+   Use bright cyan (readable on black/dark bg) instead of daisyUI default blue.
+   Covers .link.link-primary (used in PostsTab, DraftEditModal, Settings, Research cards)
+   and legacy a.font-medium. */
+.link,
+.link-primary,
+a.font-medium,
+.font-medium.cursor-pointer {
+  color: #67e8f9 !important;
 }
 
-a.font-medium:hover {
-  color: #a855f7 !important;
+.link:hover,
+.link-primary:hover,
+a.font-medium:hover,
+.font-medium.cursor-pointer:hover {
+  color: #22d3ee !important;
   text-decoration: underline;
 }
 

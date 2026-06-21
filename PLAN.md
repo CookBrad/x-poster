@@ -3,7 +3,7 @@
 > **Living document.** This file captures architecture decisions, design discussions, tradeoffs, and the current task breakdown.
 > Update it after any significant conversation or when priorities shift.
 >
-> Last updated: 2026-06-21 (Further prompt refinement: standalone story structure, explicit context for external ratings/events (e.g. Moody's), grounding with specific source facts + 1 general-knowledge support; response to real Teslarati/Moody's example that had good insight but read like a sparse reply)
+> Last updated: 2026-06-21 (Broad "what improvements would you make?" planning session: comprehensive exploration + prioritized roadmap covering secure storage (P0), dead code + unified prefs + char counter, UX polish (tabs/toasts/rationale snippets/posted search), friendly errors, image controls, scheduler; root + session plan files updated. Prior link color + originality work carried forward.)
 
 ---
 
@@ -298,6 +298,60 @@ Add new questions here as they come up. Resolve and move to Design Decisions whe
 This section captures key discussions from conversations so future sessions can pick up context quickly.
 
 **Format:** Add new entries at the **top**.
+
+---
+
+### 2026-06-21 — Broad "what improvements would you make?" exploration + prioritized improvement roadmap
+
+**Trigger:** User asked "what improvements woud you make?" after the link color fix landed. This triggered a fresh planning session (re-entered plan mode, read the prior narrow originality plan file in .grok/sessions/.../plan.md which was now outdated for the query, evaluated it as "different task", overwrote with holistic review).
+
+**Exploration performed (using list_dir, read_file on key files + PLAN/README, multiple greps across src/src-tauri, terminal runs for `npm test`/`cargo test`/`wc -l`, package/Cargo/capability/config inspection):**
+- Project layout, current feature completeness (MVP loop solid: research current/historical, 3 gen paths + styles, full edit+image+rationale+sources links, post, settings with model, local SQLite).
+- Confirmed 66 frontend + 50 Rust tests green.
+- Identified gaps vs root PLAN Phase 2 tickets (T-009 scheduler/tray, T-010, T-011 secure keys — explicitly called out as must before distro, T-012/13/14 partial now that links work + images advanced).
+- Found untracked tech debt: unused plugin-sql dep, orphan .char-* CSS, mixed LS vs DB prefs (count/style), stale "Current State (May 2025)" section and checkboxes in root PLAN.md, raw xAI errors, no tab persistence or cross-tab feedback, no char counter despite 280 awareness + CSS, modal-only rationale, crude full-reload refresh.
+- Reviewed major files for smells (commands.rs 1.3k LOC still largest despite prior _db extractions; generation.rs prompt-heavy but well tested; ResearchTab/PostsTab/DraftEditModal/HistoricalSourcesList functional but polish opportunities; no dead code in core logic).
+- Confirmed scope fidelity still excellent (narrow feeds + X prompts, human gate everywhere, no auto).
+
+**Output:** Created a detailed new plan in the sessions plan.md (overwrote the old originality one) proposing ~9 prioritized improvements (P0 release blockers like secure storage + debt cleanup first; P1 quick UX wins like char counter + toasts + persist state + richer history; P2 scheduler; plus error friendliness, image controls, docs cleanup). Each with why (tied to vision + clean code), exact approach (reuse settings table, openUrl, daisy, _db, existing test patterns), files, verification, tradeoffs.
+- Also lightly updated root PLAN last-updated + inserted this as new top Session Log entry.
+- The plan explicitly guards: all changes must preserve human control, narrow Musk scope, add tests, update docs/PLAN.
+
+**Next:** Present via exit_plan_mode for user approval. User can then select subset (e.g. "start with dead-code + char counter + unify prefs as a small safe increment") for implementation. No feature code changes were made in this planning turn.
+
+This keeps the living PLAN.md + session artifacts in sync with the broad request.
+
+---
+
+### 2026-06-21 — External link opening + link color fix (blue on black unreadable)
+
+**Context / user reports:**
+- After adding source URLs to drafts (for direct X post links in "Sources:" sections) and research cards, plain `<a target="_blank" href>` did not work in Tauri webview (sandbox prevents or does nothing; led to white-screen in some plugin attempts).
+- User: "the lnk does not work. it doesn't open in a browser", "still can't click the link", "it is all out of app links that do ot work".
+- Once fixed, follow-up: "That worked now lets change the link color. the blue on black is unreadable" — daisyUI `.link .link-primary` defaulted to a blue that was invisible/low-contrast on the #0f0f1a / #1a1a2e dark cards.
+
+**What was implemented:**
+- Added `@tauri-apps/plugin-opener` (^2.2.6) + tauri-plugin-opener = "2" + capability entries ("opener:default", "opener:allow-open-url").
+- Registered `.plugin(tauri_plugin_opener::init())` in src-tauri/src/lib.rs before .setup.
+- Converted all external links (previously broken <a> or "view" text) to interactive `<span className="link link-primary cursor-pointer" title={url} onClick={async e => { e.stopPropagation(); try { await openUrl(url) } catch { window.open fallback } }}>`.
+  - PostsTab: source labels in the Sources: line (now the name itself is the link), and the "View on X →" for posted drafts.
+  - DraftEditModal: each source li label is now the clickable link.
+  - SettingsTab: the console.x.ai and developer.x.com help links.
+  - ResearchSourceCard: the title of every card (previously just font-medium span) — made consistent by adding link link-primary classes.
+- Direct X post URLs are preserved in ResearchSource.url / DraftSource.url (from x_post / custom_source) and surfaced/clickable.
+- In src/index.css: added aggressive overrides for `.link, .link-primary` (and hover, plus legacy a.font-medium and .font-medium.cursor-pointer) using bright cyan `#67e8f9` (normal) / `#22d3ee` (hover + underline) — matching existing .text-emerald-600 cyan and the synthwave secondary accents. This covers every out-of-app link uniformly. Removed reliance on unstyled daisyUI primary blue.
+- Also updated ResearchSourceCard title to use the link classes for consistency (so one set of CSS rules applies everywhere).
+- Full verification: `npm test` (66 passed), `cargo test` (50 passed), including components that render sources/links (PostsTab.test, DraftEditModal.test, ResearchSourceCard.test, SettingsTab.test).
+
+**Why this approach:**
+- Tauri webview requires the opener plugin for reliable external URL launches (window.open or <a> alone get blocked or cause navigation inside the webview shell).
+- Using <span> + onClick + stopPropagation avoids any default anchor navigation side effects.
+- Color: cyan was chosen over purple or default for maximum readability on the forced dark backgrounds while fitting the existing vibrant accent palette (purple primary buttons, cyan for high-signal/Grok badges). !important needed due to heavy daisyUI + custom dark overrides already in place.
+- Making Research titles also "link link-primary" unifies the styling/maintainability without adding more CSS selectors.
+
+**Follow-up polish notes:**
+- The a.font-medium rules were legacy (no more <a class="font-medium"> external links remained after prior refactors); the new rules subsume them.
+- No behavior change for internal UI; only out-of-app URLs (X posts, articles, help sites).
 
 ---
 
