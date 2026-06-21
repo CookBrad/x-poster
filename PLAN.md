@@ -3,7 +3,7 @@
 > **Living document.** This file captures architecture decisions, design discussions, tradeoffs, and the current task breakdown.
 > Update it after any significant conversation or when priorities shift.
 >
-> Last updated: 2026-06-13 (Strengthened draft originality via better prompts, richer custom sources, rationale visibility in editor)
+> Last updated: 2026-06-21 (Further prompt refinement: standalone story structure, explicit context for external ratings/events (e.g. Moody's), grounding with specific source facts + 1 general-knowledge support; response to real Teslarati/Moody's example that had good insight but read like a sparse reply)
 
 ---
 
@@ -298,6 +298,41 @@ Add new questions here as they come up. Resolve and move to Design Decisions whe
 This section captures key discussions from conversations so future sessions can pick up context quickly.
 
 **Format:** Add new entries at the **top**.
+
+---
+
+### 2026-06-21 — Prompt iteration for self-contained independent story structure, explicit context for external events/ratings, and grounding with source facts + general-knowledge support (Teslarati/Moody's example)
+
+**User feedback (with concrete example):**
+A generated Insight draft had a solid core idea ("balance sheet headroom lets Tesla self-fund Optimus + robotaxi without dilution — a structural advantage Moody's rating overlooks") but:
+- Read like a reactive reply / hot take rather than an independent, scannable story.
+- Lacked context for the referenced external event ("what exactly was Moody's rating or action?").
+- Did not ground the claim with specific supporting facts/numbers from the source (the $40B cash, zero debt, steady profits were alluded to but not used to set the scene).
+- Did not add any supporting context from general knowledge that would make the "why this headroom is meaningful" vivid (e.g. history of dilution in growth phases, rough capex scale for the new programs).
+
+The source was a Teslarati RSS article (financials + Moody's note). The excerpt passed to generation contained the facts, but the output did not reliably "tell the story" using them.
+
+**What was implemented (refinement on top of the prior originality plan):**
+- Significantly strengthened the ATTRIBUTION POLICY + SUPPORTING FACTS section in both branches of `shared_generation_rules` (and the corresponding user-prompt `attribution_requirement`):
+  - Added explicit "self-contained independent story or analysis, not a reply" rule + "reader who has never seen the source or the news must still understand the full situation."
+  - Added "when the insight references an external event/rating, *explicitly establish what that event or rating actually was* using details from the source."
+  - Added "Ground the insight with 2-3 concrete, specific supporting facts or numbers drawn directly from the provided source excerpt."
+  - Added/strengthened permission + example for weaving in "1 short, relevant supporting fact or piece of context from your general pre-trained knowledge" (historical dilution, capex profiles, margin differences, etc.).
+- Added a whole new subsection "3. STRUCTURE FOR STANDALONE INSIGHT POSTS" inside `insight_style_rules()`, with clear do's and a new GOOD example directly modeled on the user's feedback case (RSS financial source + external rating like Moody's, with scene-setting, facts, insight, and one supporting general-knowledge point).
+- Updated the insight `style_requirement` in the user prompt to reference the new structure guidance.
+- In `build_generation_user_prompt`, improved the source line formatting for RSS/non-X sources (the majority of Teslarati-style financial/analyst articles) to explicitly say "Key facts reported in the article: {excerpt}" so Grok is primed to extract and use those facts for context instead of alluding to them.
+- Updated the main prompt regression test (`test_system_prompt_requires_insight_and_stock_tags`) with assertions for all the new required phrases and a check that the new GOOD example text is present in the built prompt.
+- Updated this root PLAN.md (last updated + this new top Session Log entry + note under Fresh take / T-015).
+
+**Rationale:**
+The previous "stand alone" + "supporting facts from knowledge" language (added in the immediate prior iteration) was directionally correct but not prescriptive or exemplified enough for the common case of RSS sources that reference an external rating/analyst note. Grok was still producing very concise, allusive, "insider" posts that assumed the reader already knew the news. The new language + example + source formatting label force the model to (a) set the minimal scene with source facts + the actual external event, (b) ground claims, and (c) optionally enrich with one crisp general-knowledge point — all while staying under 280 chars and keeping the fresh insight front-and-center. This directly turns "good insight but reply-like and missing context" into "independent story with good insight, context, facts, and a bit of supporting color."
+
+**Verification performed:**
+- `cargo test` (the insight prompt test and full suite) green; new phrases and the financial standalone GOOD example are asserted to be in the prompt.
+- The changes are purely in the prompt text and one formatting helper + test — zero impact on flows, DB, UI, or any other quality rules (cashtag, attribution for non-general, used-source exclusion, etc.).
+- Manual prompt inspection (via the test) confirms a reader unfamiliar with the specific Moody's article would now get the necessary "what happened" + numbers + the insight + one supporting point.
+
+This is the direct follow-up to the 2026-06-13 originality batch and the even earlier "do not attribute general knowledge / add supporting facts" request. It keeps the "Fresh take required" bar high while making the *first draft* the user sees in the queue dramatically more usable as a standalone post.
 
 ---
 

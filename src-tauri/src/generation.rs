@@ -1,4 +1,6 @@
-use crate::commands::{create_draft_db, get_drafts_db, update_draft_db, CreateDraftInput, Draft, UpdateDraftInput};
+use crate::commands::{
+    create_draft_db, get_drafts_db, update_draft_db, CreateDraftInput, Draft, UpdateDraftInput,
+};
 use crate::constants::DraftStyle;
 use crate::draft_image;
 use crate::research::ResearchSource;
@@ -34,11 +36,13 @@ fn shared_generation_rules(user_provided: bool) -> &'static str {
 - STOCK TAGS WHEN MARKET-RELEVANT (ONE CASHTAG MAX):
   - Include at most ONE cashtag per post — never use both $TSLA and $SPCX together.
   - Only add $TSLA or $SPCX when the source topic is genuinely stock-relevant; skip cashtags for unrelated political posts.
-- ATTRIBUTION POLICY + SUPPORTING FACTS FROM KNOWLEDGE:
+- ATTRIBUTION POLICY + SUPPORTING FACTS FROM KNOWLEDGE + STANDALONE STORY STRUCTURE:
   - Only attribute with "As @Handle noted..." (for X/custom_x) or "source: Publication Name" (for articles) when the specific claim, quote, data point, or recent development comes directly from the provided source AND is not generally known public information.
   - DO NOT quote or attribute the source for generally known or established facts (e.g. "Tesla makes electric vehicles", "FSD is Tesla's driver assistance technology", basic company background, widely understood industry context, or timeless technical explanations). State these plainly as supporting facts drawn from general knowledge.
-  - You MAY (and should, to make posts more interesting and informative) add relevant supporting facts, background, or context from your pre-trained general knowledge. These enhance the main insight from the source without shifting focus away from it. Never fabricate recent events, specific numbers, quotes, or time-sensitive developments not present in the source.
-  - The post should stand alone as interesting even if the reader hasn't seen the source.
+  - You MAY (and should) add relevant supporting facts, background, or context from your pre-trained general knowledge to make the post more interesting and self-contained. Never fabricate recent events, specific numbers, quotes, or time-sensitive developments not present in the source.
+  - The post must read as a **self-contained independent story or analysis**, not a reply. A reader who has never seen the input link or topic must still fully understand the situation.
+  - When the insight references an external event or context, briefly establish what it was using details from the source (or clearly note it is general knowledge).
+  - Ground the insight with concrete facts/numbers where available.
   - Never use parenthetical handles like (SawyerMerritt).
 - Avoid repeating themes from the user's RECENT POSTS list below.
 - Each post must be under 280 characters (single tweet). Count cashtags toward the limit."#
@@ -49,11 +53,14 @@ fn shared_generation_rules(user_provided: bool) -> &'static str {
   - Include at most ONE cashtag per post — never use both $TSLA and $SPCX together.
   - Tesla topics: use $TSLA. SpaceX topics: use $SPCX. Pick the single tag that best matches the main focus.
   - Do NOT add $SPCX to Tesla-only posts. xAI, Neuralink, and Boring Company have no standard cashtag.
-- ATTRIBUTION POLICY + SUPPORTING FACTS FROM KNOWLEDGE:
+- ATTRIBUTION POLICY + SUPPORTING FACTS FROM KNOWLEDGE + STANDALONE STORY STRUCTURE:
   - Only attribute with "As @Handle noted..." (for X/x_grok/custom_x) or "source: Publication Name" (for RSS/news) when the specific claim, quote, data point, or recent development comes directly from the provided source AND is not generally known public information.
   - DO NOT quote or attribute the source for generally known or established facts (e.g. "Tesla makes electric vehicles", "FSD is Tesla's driver assistance technology", basic company background, widely understood industry context, or timeless technical explanations). State these plainly as supporting facts drawn from general knowledge.
   - You MAY (and should, to make posts more interesting and informative) add relevant supporting facts, background, or context from your pre-trained general knowledge. These enhance the main insight from the source without shifting focus away from it. Never fabricate recent events, specific numbers, quotes, or time-sensitive developments not present in the source.
-  - The post should stand alone as interesting even if the reader hasn't seen the source.
+  - The post must read as a **self-contained independent story or analysis**, not a reply or hot take. A reader who has never seen the source article or the news event it references must still fully understand the situation and find the take valuable.
+  - When the insight references or contrasts with an external event/rating/analyst note (e.g. "Moody's rating overlooks..."), *explicitly establish what that event or rating actually was* according to the source (name the specific rating action, what they said or overlooked, etc.). Do not assume the reader knows the Moody's announcement or the article.
+  - Ground the insight with 2-3 *concrete, specific supporting facts or numbers* drawn directly from the provided source excerpt (cash/debt/profit figures, any capex or ramp mentions, etc.). Include the details; do not just allude to them.
+  - Weave in 1 short, relevant supporting fact or piece of context from your general knowledge where it makes the implication clearer and more credible (e.g. Tesla's history of equity raises during capex-heavy phases, rough scale of upfront investment needed for new programs like autonomy before they are cash-flow positive). Clearly signal it is not from the current source.
   - Never use parenthetical handles like (SawyerMerritt).
 - Avoid repeating themes from the user's RECENT POSTS list below.
 - Prefer Musk company/tech angles. If a source is political, still write the post about that source rather than refusing.
@@ -72,12 +79,21 @@ fn insight_style_rules() -> &'static str {
 2. ANTI-PHRASING RULE:
    - Never reuse verbs, sentence structures, or headline phrasing directly from the source or title. Re-express the core implication in fresh language.
 
+3. STRUCTURE FOR STANDALONE INSIGHT POSTS (not replies):
+   - Write as a self-contained mini-story or analysis. A reader who has never seen the source or the news must still understand the full situation.
+   - Briefly set the scene with the key facts/situation from the source (specific numbers, what the external event/rating actually was).
+   - Deliver the fresh insight/implication.
+   - Optionally weave in 1 short supporting fact from general knowledge (historical context, scale of the programs, etc.) that makes the "why this matters" clearer.
+   - Use attribution only for non-general, source-specific claims.
+
 GOOD (Tesla/X, general fact without attribution + specific with): "FSD development has long relied on accumulating diverse real-world miles for regulatory progress. As @SawyerMerritt noted, Austin Robotaxi geofence widened again — the read-through for $TSLA isn't the headline, it's faster real-world miles accruing toward regulatory confidence on unsupervised FSD."
 GOOD (RSS): "Per source: Not A Tesla App, Smart Summon on Cybertruck widens the real-world edge-case pool $TSLA needs before robotaxi scale — the product story is data velocity, not the feature checkbox."
 GOOD (deeper originality, supporting fact added): "As @WholeMarsBlog posted on Cybertruck FSD, the real signal is the data loop back to Dojo training — each additional mile in unsupervised mode compounds the software moat faster than any hardware ramp, shifting the margin mix story from cars to bits $TSLA. (Supporting context: autonomy software already shows dramatically higher gross margins than vehicle hardware in Tesla's business model.)"
+GOOD (standalone financial story with context + facts + support — RSS + external rating like Moody's): "Tesla holds roughly $40B in cash with zero net debt and steady profits. This balance sheet gives the company real room to self-fund the massive upfront investment needed for Optimus production and unsupervised robotaxi operations without issuing new shares that would dilute existing owners — a structural advantage that Moody's [specific rating action, e.g. 'Baa1 affirmation with stable outlook while flagging execution risks'] appears to underweight. (Tesla has raised equity multiple times during prior heavy-capex growth phases.) $TSLA"
 BAD (regurgitation): "Teslarati reports Tesla expanded Robotaxi in Austin." (just repeats the source)
 BAD (shallow): "Robotaxi expansion is interesting for the company and its stock." (no specific implication or re-expression)
-BAD (over-attribution): "As @SawyerMerritt noted, FSD is Tesla's Full Self-Driving system." (attributes common knowledge that needs no source citation)"#
+BAD (over-attribution + no context): "As @SawyerMerritt noted, FSD is Tesla's Full Self-Driving system." (attributes common knowledge; also fails to set any scene)
+BAD (reply-like, assumes reader knows the external event): "Tesla's $40B cash, zero debt, and steady profits create headroom to self-fund Optimus and robotaxi ramps without dilution, a structural advantage Moody's rating overlooks. $TSLA" (no explanation of what Moody's actually did or said; no grounding details; feels like a direct comment on the news + article)"#
 }
 
 fn informative_style_rules() -> &'static str {
@@ -201,8 +217,11 @@ pub fn build_generation_user_prompt(
                 s.url
             )
         } else {
+            // For RSS and other non-X sources, explicitly label the excerpt as the factual "setup"
+            // so Grok knows it must draw key numbers and event details from here to set the scene
+            // for a self-contained story (instead of alluding to "the rating" or "the profits").
             format!(
-                "{}. [{}] {} — {}\n   {} | URL: {}",
+                "{}. [{}] {} — Key facts reported in the article: {}\n   Reported by: {} | URL: {}",
                 i + 1,
                 s.source_type,
                 s.title,
@@ -243,7 +262,7 @@ pub fn build_generation_user_prompt(
 
     let style_requirement = match style {
         DraftStyle::Insight => {
-            "- Add genuine insight (implications, read-through, what the market or observers miss) — never just repeat the source. Transform facts into a non-obvious but grounded observation; re-express in fresh language (see style rules for anti-phrasing)."
+            "- Add genuine insight (implications, read-through, what the market or observers miss) — never just repeat the source. Transform facts into a non-obvious but grounded observation; re-express in fresh language (see style rules for anti-phrasing and the new 'STRUCTURE FOR STANDALONE INSIGHT POSTS' section — self-contained story with scene-setting for any external event/rating, specific facts/numbers from the source, and optional 1 supporting general-knowledge point)."
         }
         DraftStyle::Informative => {
             "- Make each post clear, factual, and useful — explain what happened without heavy analysis."
@@ -512,7 +531,11 @@ pub fn parse_generated_drafts(content: &str) -> Result<Vec<GeneratedDraftItem>, 
             primary_source_index: v["primary_source_index"]
                 .as_u64()
                 .map(|n| n as u32)
-                .or_else(|| v["primary_source_index"].as_str().and_then(|s| s.parse().ok())),
+                .or_else(|| {
+                    v["primary_source_index"]
+                        .as_str()
+                        .and_then(|s| s.parse().ok())
+                }),
         });
     }
 
@@ -626,11 +649,7 @@ pub async fn generate_drafts_from_sources_db(
     style: DraftStyle,
 ) -> Result<Vec<Draft>, String> {
     let recent = get_drafts_db(db, Some("posted".to_string())).await?;
-    let recent_texts: Vec<String> = recent
-        .into_iter()
-        .take(8)
-        .map(|d| d.text)
-        .collect();
+    let recent_texts: Vec<String> = recent.into_iter().take(8).map(|d| d.text).collect();
 
     let generated =
         call_grok_for_drafts(xai_api_key, model, sources, &recent_texts, count, style).await?;
@@ -643,8 +662,7 @@ pub async fn generate_drafts_from_sources_db(
         let primary = crate::x_media::match_primary_source(&text, &draft_sources);
         let image_url = primary.and_then(|s| s.media_url.clone());
 
-        let sources_json =
-            serde_json::to_string(&draft_sources).map_err(|e| e.to_string())?;
+        let sources_json = serde_json::to_string(&draft_sources).map_err(|e| e.to_string())?;
 
         if let Some(r) = &item.rationale {
             log::info!("Generated draft with rationale: {} | text: {}", r, text);
@@ -660,9 +678,9 @@ pub async fn generate_drafts_from_sources_db(
 
         if style == DraftStyle::Meme {
             if let Some(dir) = app_data_dir {
-                let prompt =
-                    draft_image::build_meme_image_generation_prompt(&draft.text, primary);
-                if let Some(url) = draft_image::generate_image_with_grok(xai_api_key, &prompt).await?
+                let prompt = draft_image::build_meme_image_generation_prompt(&draft.text, primary);
+                if let Some(url) =
+                    draft_image::generate_image_with_grok(xai_api_key, &prompt).await?
                 {
                     if let Ok(local_path) =
                         draft_image::persist_image_from_url(dir, &draft.id, &url).await
@@ -684,7 +702,10 @@ pub async fn generate_drafts_from_sources_db(
             }
         }
 
-        let source_ids: Vec<String> = draft_sources.iter().map(|source| source.id.clone()).collect();
+        let source_ids: Vec<String> = draft_sources
+            .iter()
+            .map(|source| source.id.clone())
+            .collect();
         crate::commands::mark_research_sources_used_db(db, &source_ids).await?;
         drafts.push(draft);
     }
@@ -773,15 +794,24 @@ mod tests {
         assert!(prompt.contains("BULLISH"));
         assert!(prompt.contains("NOT REGURGITATION"));
         assert!(prompt.contains("ONE CASHTAG MAX"));
-        // New stronger originality language (in system prompt rules)
+        // Previous stronger originality language
         assert!(prompt.contains("followed the story for months"));
         assert!(prompt.contains("Re-express the core implication"));
         assert!(prompt.contains("non-generic"));
         assert!(prompt.contains("screenshotting"));
-        // New attribution policy for general knowledge + supporting facts
+        // Previous attribution policy for general knowledge + supporting facts
         assert!(prompt.contains("generally known or established facts"));
         assert!(prompt.contains("SUPPORTING FACTS FROM KNOWLEDGE"));
         assert!(prompt.contains("DO NOT quote or attribute the source for generally known"));
+        // New iteration (2026-06-21): standalone story structure + explicit context for external events + grounding with source facts + 1 general-knowledge support
+        assert!(prompt.contains("self-contained mini-story or analysis"));
+        assert!(prompt.contains("explicitly establish what that event or rating actually was"));
+        assert!(prompt.contains("Ground the insight with 2-3"));
+        assert!(prompt.contains("Weave in 1 short, relevant supporting fact"));
+        assert!(prompt.contains("STRUCTURE FOR STANDALONE INSIGHT POSTS"));
+        // Verify one of the new GOOD example texts (the financial standalone with Moody's-style external rating) is embedded
+        assert!(prompt
+            .contains("has raised equity multiple times during prior heavy-capex growth phases"));
     }
 
     #[test]
@@ -1056,8 +1086,12 @@ mod tests {
             media_url: None,
             used_at: None,
         }];
-        let prompt =
-            build_generation_user_prompt(&sources, &["Old post about Cybertruck".into()], 2, DraftStyle::Insight);
+        let prompt = build_generation_user_prompt(
+            &sources,
+            &["Old post about Cybertruck".into()],
+            2,
+            DraftStyle::Insight,
+        );
         assert!(prompt.contains("Robotaxi"));
         assert!(prompt.contains("Cybertruck"));
         assert!(prompt.contains("exactly 2"));
