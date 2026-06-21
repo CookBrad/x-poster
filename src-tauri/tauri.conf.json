@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "x-poster",
   "version": "0.1.0",
-  "identifier": "com.bradleycook.xposter",
+  "identifier": "x-poster",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
@@ -29,7 +29,9 @@
         "enable": true,
         "scope": {
           "requireLiteralLeadingDot": false,
-          "allow": ["$APPDATA/**/*"]
+          "allow": [
+            "$APPDATA/**/*"
+          ]
         }
       }
     }

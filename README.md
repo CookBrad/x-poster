@@ -1,117 +1,153 @@
 # x-poster
 
-Local-first desktop app (Tauri + React) that researches Tesla/TSLA/Elon company topics via X + RSS, generates drafts with xAI Grok, lets you review/approve in a nice UI, and posts to X.
+**Local-first desktop app** (Tauri v2 + React 19 + TypeScript) that:
 
-**Current status (MVP early shell):** Tauri + React + Tailwind + daisyUI scaffold complete. Working "Test xAI Connection" button in Settings. Placeholder queue UI.
+- Discovers high-signal, non-political updates strictly about Elon Musk’s companies (Tesla/TSLA + Cybertruck/FSD/Optimus/Robotaxi/Megapack, SpaceX, xAI/Grok, Neuralink, Boring Company) via curated RSS feeds + Grok-powered X search (using the native `x_search` tool — **no X Developer API keys are used for research**).
+- Generates draft posts with xAI Grok (multiple styles: Insight/default, Informative, Funny, Witty, Meme; grok-4.3 recommended).
+- Lets you **review every single draft**, edit the text, choose/resolve images, and explicitly approve before anything is posted.
+- Posts only after your approval using your own X OAuth 1.0a credentials.
 
-## Quick Start (macOS)
+Everything is stored locally in a SQLite database (`x-poster.db`). No cloud sync. Human stays in full control at every step.
 
-1. **Paste your keys**
-   - Open `.env` in the project root
-   - Paste your xAI key: `VITE_XAI_API_KEY=sk-...`
-   - (Later also add your X API credentials in the same file)
+## Current Status
 
-2. **Install deps** (already done in this workspace)
+MVP is functionally complete for the core loop:
+
+- Research tab (Current + Historical sub-tabs, RSS / X / Both modes, per-source "Generate Post" buttons, bulk generation, search/pagination on history, "Reset All Research Data").
+- Draft generation from research sources (avoids re-using sources), from individual sources, or from arbitrary pasted URLs / X posts / free-text topics.
+- Posts/Queue tab with full editing, image support, Grok rationale display, approve & post.
+- Settings: persisted xAI key + selectable Grok model, X OAuth 1.0a credentials (4 fields), test buttons for both.
+- Nice dark synthwave-themed UI (daisyUI + custom purple/cyan accents).
+
+See [PLAN.md](./PLAN.md) for detailed history, design decisions, and the living task list.
+
+## Prerequisites (macOS)
+
+- **Node.js** 20+ LTS (or recent 18+)
+- **Rust** (stable, minimum 1.77.2 — latest stable strongly recommended)
+  ```bash
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+  rustup update
+  ```
+  For Apple Silicon Macs (M1/M2/M3/M4):
+  ```bash
+  rustup target add aarch64-apple-darwin
+  ```
+  (Add `x86_64-apple-darwin` too if you need Intel builds.)
+- **Xcode Command Line Tools**
+  ```bash
+  xcode-select --install
+  ```
+
+## Setup
+
+1. Install JavaScript dependencies:
    ```bash
    npm install
    ```
 
-3. **Run the app (with hot reload)**
+2. Get the required API credentials:
+
+   - **xAI / Grok key** (required for research + draft generation):  
+     Create one at https://x.ai/api (or the xAI console). The free tier is sufficient for normal use.
+
+   - **X (Twitter) credentials** (required only if you want to post drafts):  
+     - Go to https://developer.x.com/ and create a Project + App.
+     - Set the app permissions to **Read + Write** (and Direct Messages if desired).
+     - Generate:
+       - API Key + API Secret (consumer key/secret)
+       - Access Token + Access Token Secret (with write access)
+     - You need all four for OAuth 1.0a posting.
+
+3. (Optional, development only) Create a `.env` file for a quick xAI fallback:
    ```bash
-   npm run tauri dev
+   cp .env.example .env
    ```
+   Put your key in `VITE_XAI_API_KEY=sk-...`
 
-   This starts the Vite dev server + the native Tauri window.
+   **Note**: The app primarily uses keys you save inside the **Settings** tab (persisted to your local SQLite DB). The `.env` VITE_ key is only a dev convenience fallback.
 
-4. Go to the **Settings** tab → click **Test xAI Connection**.  
-   You should see a successful reply from Grok if the key is valid.
+## Running the App (Development)
 
-## Project Structure (key files)
-- `.env` + `.env.example` — your API keys (gitignored)
-- `src/App.tsx` — main UI (tabs + draft queue shell)
-- `src-tauri/tauri.conf.json` — native window, bundle id, etc.
-- `src-tauri/src/main.rs` — Rust entry (we'll extend for tray, scheduler, secure storage)
-
-## Next steps we're building
-- Real hybrid research (X search + RSS)
-- Editable draft cards with image support
-- Proper X posting flow
-- Background scheduler + tray
-- Secure (non-.env) key storage for packaged builds
-
-See [PLAN.md](./PLAN.md) for the current task breakdown, design decisions, and session notes.
-
-## Important Notes
-- This is **local dev only** right now. Keys in `.env` are for development.
-- The final packaged app will use secure OS storage so you can distribute the binary without leaking keys.
-- All posts require explicit human approval in the MVP (you stay in control).
-
-Currently, two official plugins are available:
-
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm run tauri dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+- This runs the Vite dev server (`npm run dev`) and launches the native Tauri desktop window.
+- First run will compile the Rust backend (can take 1–5 minutes).
+- Frontend changes hot-reload.
+- Rust changes require a full window restart.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+The window title is "x-poster". Default size is comfortable for a laptop.
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## First-Time Configuration & Core Workflow
+
+1. Open the **Settings** tab.
+2. **Research & Drafts**:
+   - Paste your xAI key → Save.
+   - (Optional) Change the Grok model (grok-4.3 is the current most capable default).
+   - Click **Test Connection**.
+3. **Posting to X** (if you want to post):
+   - Fill the four credential fields (labels match the X Developer Portal exactly).
+   - Save.
+   - Click **Test X Credentials**.
+4. Go to the **Research** tab.
+   - Choose a mode (RSS only, X via Grok only, or Both).
+   - Click the corresponding Run button (or "Research + Generate" for the full pipeline).
+   - Browse sources in Current or Historical. Click **Generate Post** on any individual source, or use the bulk buttons.
+5. Switch to the **Posts** tab (your queue).
+   - Edit text + optional image URL.
+   - See the original research sources + Grok’s “intended insight / added value” rationale.
+   - **Approve & Post** (or Skip / Delete).
+6. Posted items move to the posted view. You can still delete the local history record (it never deletes the actual tweet).
+
+All research, drafts, settings, and credentials live in:
+`xposter/x-poster.db`
+
+Delete that folder (or use the **Reset All Research Data** button) to start fresh.
+
+## Building a Release Version
+
+```bash
+npm run tauri build
 ```
+
+Bundles appear in `src-tauri/target/release/bundle/`.
+
+- On macOS you’ll get a `.app` and usually a `.dmg`.
+- For distribution outside your machine you should sign + notarize the app (see the official Tauri macOS signing guide).
+- Packaged builds do **not** read `.env` — users configure everything in the in-app Settings (persisted locally).
+
+## Troubleshooting
+
+- **First run takes forever / Rust errors**: Make sure you ran the `rustup target add` commands for your architecture and that Xcode CLTs are installed.
+- **“xAI API key is required”**: The key must be saved in Settings (or present as `VITE_XAI_API_KEY` in `.env` during dev). Research X mode and all generation require it.
+- **X posting / credential test fails**: Double-check that the app in the X Developer Portal has Read+Write permissions **and** that the Access Token you are using was generated *after* you changed the permissions. Regenerate the token if needed.
+- **No (or very few) X research results**: The discovery is intentionally narrow (Musk companies only + high-confidence items from known voices). Try “Both” mode or run research a couple of times. Check the terminal logs — full raw Grok responses are logged for diagnosis.
+- **App feels slow on first research/generation**: The first Grok calls + Rust compilation of certain paths can be noticeable. Subsequent runs are fast.
+- **Database locked or weird state**: Quit the app completely, or delete the `x-poster.db` file in the app support directory.
+- Logs: In development they appear in the terminal that launched `tauri dev` (plus the tauri-plugin-log output).
+
+## Architecture & Philosophy (Quick)
+
+- **Frontend**: React + TypeScript + Vite + Tailwind + daisyUI (synthwave-based dark theme with purple/cyan accents).
+- **Backend**: Tauri 2 (Rust) using `sqlx` + embedded SQLite migrations. No Tauri SQL plugin — direct control.
+- **Research**:
+  - RSS: `feed-rs` (currently Teslarati + Not a Tesla App; 14-day freshness filter).
+  - X: Grok Responses API + the `x_search` (live_search) tool with `sources: [{type:"x"}]`. Strict “Musk companies only”, high-confidence, anti-hallucination rules. No X API keys ever used for discovery.
+- **Draft generation**: Grok (JSON output) with rich style-specific system prompts that emphasize *fresh insight / anti-regurgitation*, one stock cashtag max (`$TSLA` or `$SPCX`), inline attribution rules, and recent-posted deduplication. Post-processing normalizes attribution and enforces cashtag limits.
+- **Images**: Meta extraction for custom sources + optional Grok image generation for Meme style.
+- **Posting**: Pure manual OAuth 1.0a request signing (no official X SDK). Human approval gate is non-negotiable in the MVP.
+- **Everything local**. Settings, research history, drafts, and X credentials are all in the local SQLite file.
+
+See the source (especially `src-tauri/src/{research,generation,commands}.rs`, `src/components/{ResearchTab,PostsTab,SettingsTab}.tsx`, and `src/lib/db.ts`) for the real details.
+
+## License & Notes
+
+Personal project. All posts you make are your own responsibility.
+
+The guiding principle is **“fresh take required”** — drafts must add original analysis, implications, or a novel angle. They must not merely restate the source.
+
+Happy posting (after you review it)! 🚀
+
+If you’re hacking on it: run the tests with `npm test` and `cd src-tauri && cargo test`. Full task history lives in [PLAN.md](./PLAN.md).

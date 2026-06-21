@@ -384,7 +384,7 @@ This builds on the fresh-take principle and advances the spirit of T-015 (UI vis
 ### 2026-06-04 — Reset All Research Data: DB delete actually runs (user report: still not deleting)
 
 **Diagnosis:**
-- Live DB at `~/Library/Application Support/com.bradleycook.xposter/x-poster.db` still had 20 runs / 249 sources after UI "reset" attempts — backend DELETE was never taking effect in practice.
+- Live DB at `xposter/x-poster.db` still had 20 runs / 249 sources after UI "reset" attempts — backend DELETE was never taking effect in practice.
 - Likely causes: `window.confirm()` unreliable in Tauri webview (early return before invoke), reset button `disabled={loading}` during research, and no post-delete verification.
 
 **Fix:**
