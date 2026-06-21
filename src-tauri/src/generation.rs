@@ -162,7 +162,7 @@ pub fn build_generation_system_prompt(style: DraftStyle, sources: &[ResearchSour
     };
 
     let role = if user_provided {
-        "You are an expert social media writer creating posts from links and topics the user explicitly requested."
+        "You are an expert social media writer creating posts from links and topics the user explicitly requested. Your posts must be directly based on and faithful to the specific content, story, claims, or idea the user pasted. Do not generate a post about a different or only loosely related topic."
     } else {
         "You are an expert social media writer creating posts for a human who covers Elon Musk's companies (Tesla, SpaceX, xAI, Neuralink, Boring Company)."
     };
@@ -192,6 +192,7 @@ pub fn build_generation_user_prompt(
     count: u32,
     style: DraftStyle,
 ) -> String {
+    let user_provided = sources_are_user_provided(sources);
     let mut source_lines = Vec::new();
     for (i, s) in sources.iter().take(20).enumerate() {
         // Increased from 400 to give Grok more raw material (facts, context) for synthesizing
@@ -200,8 +201,6 @@ pub fn build_generation_user_prompt(
         let attribution = format_source_attribution(s);
 
         // Special formatting for X research sources that carry a "Why notable" note from discovery.
-        // This surfaces the pre-computed interesting angle so generation can build a stronger
-        // original insight on it rather than ignoring the signal in the middle of the excerpt.
         let formatted = if let Some(pos) = s.content.find("\n\n[Why notable: ") {
             let main = &s.content[..pos];
             let why = &s.content[pos + "\n\n[Why notable: ".len()..].trim_end_matches(']');
@@ -216,8 +215,19 @@ pub fn build_generation_user_prompt(
                 attribution,
                 s.url
             )
+        } else if user_provided {
+            // For custom user-provided content (the link or text the user pasted), label it clearly
+            // so the model knows this is the *exact* content to base the draft on. High fidelity required.
+            format!(
+                "{}. [user-provided] {} — The exact content the user pasted: {}\n   From: {} | URL: {}",
+                i + 1,
+                s.title,
+                excerpt,
+                attribution,
+                s.url
+            )
         } else {
-            // For RSS and other non-X sources, explicitly label the excerpt as the factual "setup"
+            // For regular research RSS and other non-X sources, explicitly label the excerpt as the factual "setup"
             // so Grok knows it must draw key numbers and event details from here to set the scene
             // for a self-contained story (instead of alluding to "the rating" or "the profits").
             format!(
@@ -244,12 +254,14 @@ pub fn build_generation_user_prompt(
             .join("\n")
     };
 
-    let user_provided = sources_are_user_provided(sources);
     let custom_source_note = if user_provided {
-        "\nUSER-REQUESTED INPUT (MANDATORY):\n\
-         - The user pasted this link or typed this topic on purpose.\n\
+        "\nUSER-REQUESTED INPUT (MANDATORY - HIGH FIDELITY TO PROVIDED CONTENT):\n\
+         - The user explicitly pasted this link or typed this topic because they want a draft post *based directly on this specific content*.\n\
+         - You MUST create a post whose core idea, main points, story, and claims come from the actual text the user provided. Do not substitute a different narrative or generate a post on a tangential topic.\n\
+         - Stay faithful to the specific details, arguments, or news in the pasted link or text. You can make the language more engaging for X, structure it as a strong standalone post, add a light fresh insight or one supporting fact from general knowledge (if it enhances without changing the core), but the post must feel like it is about exactly what the user shared.\n\
          - You MUST generate a post about the source content even if it is political, controversial, or unrelated to Musk companies.\n\
-         - Do NOT refuse, hedge, or substitute a different topic.\n"
+         - Do NOT refuse, hedge, or substitute a different topic.\n\
+         - If the input is a specific X post or article, your draft should be a polished, insightful way for the user to share or discuss that exact content.\n"
     } else {
         ""
     };
@@ -828,7 +840,7 @@ mod tests {
     fn test_build_user_prompt_custom_source_requires_generation() {
         let sources = vec![custom_political_x_source()];
         let prompt = build_generation_user_prompt(&sources, &[], 1, DraftStyle::Informative);
-        assert!(prompt.contains("USER-REQUESTED INPUT (MANDATORY)"));
+        assert!(prompt.contains("USER-REQUESTED INPUT (MANDATORY - HIGH FIDELITY TO PROVIDED CONTENT)"));
         assert!(prompt.contains("political"));
         assert!(prompt.contains("Do NOT refuse"));
     }
