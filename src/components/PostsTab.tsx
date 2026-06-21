@@ -22,6 +22,7 @@ import {
 } from '../lib/draftUtils'
 import { DraftEditModal } from './DraftEditModal'
 import { DraftImage } from './DraftImage'
+import { openUrl } from '@tauri-apps/plugin-opener'
 
 type PostsSubview = 'pending' | 'posted'
 
@@ -338,6 +339,15 @@ function DraftCard({
                   target="_blank"
                   rel="noopener noreferrer"
                   className="hover:underline mr-2"
+                  onClick={async (e) => {
+                    e.preventDefault()
+                    try {
+                      await openUrl(s.url!)
+                    } catch (err) {
+                      console.error('Failed to open URL via opener, falling back', err)
+                      window.open(s.url!, '_blank')
+                    }
+                  }}
                 >
                   {isXSource(s) ? 'view original X post' : 'view source'}
                 </a>
@@ -349,7 +359,21 @@ function DraftCard({
         {draft.x_post_id && (
           <div className="text-xs text-success mt-1">
             {xUrl ? (
-              <a href={xUrl} target="_blank" rel="noopener noreferrer" className="link link-primary">
+              <a
+                href={xUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="link link-primary"
+                onClick={async (e) => {
+                  e.preventDefault()
+                  try {
+                    await openUrl(xUrl)
+                  } catch (err) {
+                    console.error('Failed to open URL via opener, falling back', err)
+                    window.open(xUrl, '_blank')
+                  }
+                }}
+              >
                 View on X →
               </a>
             ) : (

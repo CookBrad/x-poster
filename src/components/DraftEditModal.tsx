@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { updateDraft, parseSources, type Draft } from '../lib/db'
 import { getDraftDisplayImage } from '../lib/draftImage'
 import { DraftImage } from './DraftImage'
+import { openUrl } from '@tauri-apps/plugin-opener'
 
 export interface DraftEditModalProps {
   draft: Draft | null
@@ -98,6 +99,15 @@ export function DraftEditModal({ draft, open, onClose, onSaved }: DraftEditModal
                         target="_blank"
                         rel="noopener noreferrer"
                         className="ml-1 text-[10px] text-primary hover:underline"
+                        onClick={async (e) => {
+                          e.preventDefault()
+                          try {
+                            await openUrl(s.url!)
+                          } catch (err) {
+                            console.error('Failed to open URL via opener, falling back', err)
+                            window.open(s.url!, '_blank')
+                          }
+                        }}
                       >
                         (direct link)
                       </a>

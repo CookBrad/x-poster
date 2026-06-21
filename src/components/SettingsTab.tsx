@@ -4,6 +4,7 @@ import { SETTING_KEYS } from '../lib/constants'
 import { hasXCredentials } from '../lib/db'
 import ApiKeySettings from './ApiKeySettings'
 import XCredentialsSettings from './XCredentialsSettings'
+import { openUrl } from '@tauri-apps/plugin-opener'
 
 interface SetupStatus {
   xaiKeyConfigured: boolean
@@ -107,6 +108,15 @@ export function SettingsTab() {
                   href="https://console.x.ai/"
                   target="_blank"
                   rel="noopener noreferrer"
+                  onClick={async (e) => {
+                    e.preventDefault()
+                    try {
+                      await openUrl('https://console.x.ai/')
+                    } catch (err) {
+                      console.error('Failed to open URL via opener, falling back', err)
+                      window.open('https://console.x.ai/', '_blank')
+                    }
+                  }}
                   className="link link-primary"
                 >
                   console.x.ai
@@ -135,6 +145,15 @@ export function SettingsTab() {
                   href="https://developer.x.com/"
                   target="_blank"
                   rel="noopener noreferrer"
+                  onClick={async (e) => {
+                    e.preventDefault()
+                    try {
+                      await openUrl('https://developer.x.com/')
+                    } catch (err) {
+                      console.error('Failed to open URL via opener, falling back', err)
+                      window.open('https://developer.x.com/', '_blank')
+                    }
+                  }}
                   className="link link-primary"
                 >
                   developer.x.com

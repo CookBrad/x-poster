@@ -1,4 +1,5 @@
 import { RESEARCH_SOURCE_TYPE } from '../lib/constants'
+import { openUrl } from '@tauri-apps/plugin-opener'
 
 export interface ResearchSourceCardProps {
   sourceId: string
@@ -63,7 +64,16 @@ export function ResearchSourceCard({
                 target="_blank"
                 rel="noopener noreferrer"
                 className="font-medium hover:underline text-sm"
-                onClick={(event) => event.stopPropagation()}
+                onClick={async (event) => {
+                  event.stopPropagation()
+                  event.preventDefault()
+                  try {
+                    await openUrl(url)
+                  } catch (err) {
+                    console.error('Failed to open URL via opener, falling back', err)
+                    window.open(url, '_blank')
+                  }
+                }}
               >
                 {title}
               </a>
