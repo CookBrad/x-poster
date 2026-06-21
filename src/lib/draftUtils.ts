@@ -1,12 +1,12 @@
 import { DRAFT_STATUS, RESEARCH_SOURCE_TYPE, SIMULATED_POST_ID_PREFIX, X_STATUS_URL_BASE } from './constants'
 import { parseSources, type Draft, type DraftSource } from './db'
 
-function isRssSource(source: DraftSource): boolean {
+export function isRssSource(source: DraftSource): boolean {
   const sourceType = (source.source_type ?? source.type ?? '').toLowerCase()
   return sourceType === RESEARCH_SOURCE_TYPE.rss
 }
 
-function isXSource(source: DraftSource): boolean {
+export function isXSource(source: DraftSource): boolean {
   const sourceType = (source.source_type ?? source.type ?? '').toLowerCase()
   return sourceType === RESEARCH_SOURCE_TYPE.xGrok || sourceType === 'x' || sourceType === 'x_post'
 }
@@ -35,16 +35,15 @@ export function formatSourceLabel(source: DraftSource): string | undefined {
   if (!rawName) return undefined
 
   const name = rawName.trim().replace(/^@/, '')
-  const url = source.url ? ` ${source.url}` : ''
   if (isRssSource(source)) {
-    return `source: ${name}${url}`
+    return `source: ${name}`
   }
 
   if (isXSource(source) || source.user) {
-    return `@${name}${url}`
+    return `@${name}`
   }
 
-  return name + url
+  return name
 }
 
 export function formatSourceLabels(draft: Draft): string {

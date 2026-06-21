@@ -6,6 +6,7 @@ import {
   deleteDraft,
   clearPendingDrafts,
   postDraftToX,
+  parseSources,
   type Draft,
 } from '../lib/db'
 import { DRAFT_STATUS } from '../lib/constants'
@@ -17,6 +18,7 @@ import {
   formatSourceLabels,
   isPendingDraft,
   isPostedDraft,
+  isXSource,
 } from '../lib/draftUtils'
 import { DraftEditModal } from './DraftEditModal'
 import { DraftImage } from './DraftImage'
@@ -323,6 +325,26 @@ function DraftCard({
         {sourceLabels && (
           <div className="text-xs opacity-60 mt-2">Sources: {sourceLabels}</div>
         )}
+        {(() => {
+          const srcs = parseSources(draft)
+          const withUrls = srcs.filter((s: any) => s.url)
+          if (withUrls.length === 0) return null
+          return (
+            <div className="text-[10px] opacity-50 mt-0.5">
+              {withUrls.map((s: any, i: number) => (
+                <a
+                  key={i}
+                  href={s.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:underline mr-2"
+                >
+                  {isXSource(s) ? 'view original X post' : 'view source'}
+                </a>
+              ))}
+            </div>
+          )
+        })()}
 
         {draft.x_post_id && (
           <div className="text-xs text-success mt-1">
