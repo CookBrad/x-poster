@@ -404,7 +404,7 @@ mod tests {
             title: "title".into(),
             content: "content".into(),
             url: url.into(),
-            published_at: Some(Utc::now()),
+            published_at: Some(Utc::now().to_rfc3339()),
             source_name: format!("@{}", author),
             source_type: "x_grok".into(),
             retweet_count: None,

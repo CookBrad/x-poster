@@ -1,5 +1,5 @@
 use crate::x_post::extract_tweet_id_from_url;
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use feed_rs::parser;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -11,14 +11,18 @@ pub struct ResearchSource {
     pub title: String,
     pub content: String,
     pub url: String,
-    pub published_at: Option<DateTime<Utc>>,
+    /// Stored as RFC3339 string (or None). Using String keeps the type portable
+    /// across sqlite and postgres when using sqlx::Any (chrono DateTime decode
+    /// doesn't bridge automatically for Any + FromRow derive).
+    pub published_at: Option<String>,
     pub source_name: String,
     pub source_type: String, // "rss" or "x"
-    // Engagement metrics (mainly populated for X posts)
-    pub retweet_count: Option<u32>,
-    pub like_count: Option<u32>,
-    pub reply_count: Option<u32>,
-    pub quote_count: Option<u32>,
+    // Engagement metrics (mainly populated for X posts).
+    // Using i64 for portability with sqlx::Any (across sqlite + postgres).
+    pub retweet_count: Option<i64>,
+    pub like_count: Option<i64>,
+    pub reply_count: Option<i64>,
+    pub quote_count: Option<i64>,
 
     /// Original identifier from the source (X post id, RSS entry id, etc.).
     /// This can be duplicated across different research runs.
@@ -29,7 +33,7 @@ pub struct ResearchSource {
     pub media_url: Option<String>,
 
     /// Set when this source has been used to generate a draft post.
-    pub used_at: Option<DateTime<Utc>>,
+    pub used_at: Option<String>,
 }
 
 pub fn is_research_source_used(source: &ResearchSource) -> bool {
@@ -122,12 +126,15 @@ async fn fetch_single_rss(client: &Client, url: &str) -> Result<Vec<ResearchSour
             }
         }
 
+        // Store as RFC3339 string for DB portability (AnyPool + FromRow)
+        let published_str = published.map(|dt| dt.to_rfc3339());
+
         items.push(ResearchSource {
             id: entry.id.clone(),
             title,
             content: strip_html(&content),
             url: link,
-            published_at: published,
+            published_at: published_str,
             source_name: source_name.clone(),
             source_type: "rss".to_string(),
             retweet_count: None,
@@ -393,22 +400,22 @@ If verbatim recent posts are limited, still return the best substantive items yo
             .and_then(|d| d.as_str())
             .unwrap_or("")
             .trim();
-        let published_at: Option<DateTime<Utc>> = if !date_str.is_empty() {
+        let published_at: Option<String> = if !date_str.is_empty() {
             // Try full RFC3339 / datetime with timezone first
             if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(date_str) {
-                Some(dt.with_timezone(&Utc))
+                Some(dt.with_timezone(&Utc).to_rfc3339())
             } 
             // Handle plain date "2026-05-29" (very common from Grok)
             else if let Ok(naive_date) = chrono::NaiveDate::parse_from_str(date_str, "%Y-%m-%d") {
                 // Treat as midnight UTC on that date
-                Some(naive_date.and_hms_opt(0, 0, 0).unwrap().and_utc())
+                Some(naive_date.and_hms_opt(0, 0, 0).unwrap().and_utc().to_rfc3339())
             } 
             // Other human-readable formats
             else if let Ok(dt) = chrono::DateTime::parse_from_str(date_str, "%B %d %Y") {
-                Some(dt.with_timezone(&Utc))
+                Some(dt.with_timezone(&Utc).to_rfc3339())
             } 
             else if let Ok(dt) = chrono::DateTime::parse_from_str(date_str, "%b %d %Y") {
-                Some(dt.with_timezone(&Utc))
+                Some(dt.with_timezone(&Utc).to_rfc3339())
             } 
             else {
                 // Could not parse — leave as None so UI shows "Unknown date"
@@ -498,7 +505,7 @@ mod tests {
                 quote_count: None,
                 original_id: None,
                 media_url: None,
-                used_at: Some(Utc::now()),
+                used_at: Some(Utc::now().to_rfc3339()),
             },
         ];
 

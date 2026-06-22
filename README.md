@@ -7,7 +7,7 @@
 - Lets you **review every single draft**, edit the text, choose/resolve images, and explicitly approve before anything is posted.
 - Posts only after your approval using your own X OAuth 1.0a credentials.
 
-Everything is stored locally in a SQLite database (`x-poster.db`). No cloud sync. Human stays in full control at every step.
+Data lives in a sqlx database (defaults to a local SQLite file `x-poster.db` for zero-config; can use a remote Postgres by setting the `DATABASE_URL` env var). This is the first step toward server-hosted data. No cloud sync or remote execution yet. Human stays in full control at every step.
 
 ## Current Status
 
@@ -132,7 +132,7 @@ Bundles appear in `src-tauri/target/release/bundle/`.
 ## Architecture & Philosophy (Quick)
 
 - **Frontend**: React + TypeScript + Vite + Tailwind + daisyUI (synthwave-based dark theme with purple/cyan accents).
-- **Backend**: Tauri 2 (Rust) using `sqlx` + embedded SQLite migrations. No Tauri SQL plugin — direct control.
+- **Backend**: Tauri 2 (Rust) using `sqlx` + embedded migrations (local SQLite by default; Postgres supported via `DATABASE_URL` for "DB on a server"). No Tauri SQL plugin — direct control.
 - **Research**:
   - RSS: `feed-rs` (currently Teslarati + Not a Tesla App; 14-day freshness filter).
   - X: Grok Responses API + the `x_search` (live_search) tool with `sources: [{type:"x"}]`. Strict “Musk companies only”, high-confidence, anti-hallucination rules. No X API keys ever used for discovery.

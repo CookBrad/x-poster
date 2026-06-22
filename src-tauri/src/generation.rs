@@ -6,7 +6,7 @@ use crate::draft_image;
 use crate::research::ResearchSource;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use sqlx::SqlitePool;
+use crate::DbPool;
 use std::path::Path;
 use std::time::Duration;
 
@@ -652,7 +652,7 @@ fn pick_sources_for_draft(
 }
 
 pub async fn generate_drafts_from_sources_db(
-    db: &SqlitePool,
+    db: &DbPool,
     app_data_dir: Option<&Path>,
     sources: &[ResearchSource],
     xai_api_key: &str,

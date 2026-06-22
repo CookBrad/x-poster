@@ -3,11 +3,10 @@ use crate::{
         draft_status, settings, DraftStyle, DEFAULT_DRAFT_COUNT, DEFAULT_GROK_MODEL,
         MAX_DRAFT_COUNT, RESEARCH_SOURCE_LIMIT,
     },
-    custom_source, draft_image, generation, research, x_media, x_post, AppState,
+    custom_source, draft_image, generation, research, x_media, x_post, AppState, DbPool,
 };
 use std::path::Path;
 use serde::{Deserialize, Serialize};
-use sqlx::sqlite::SqlitePool;
 use tauri::State;
 use uuid::Uuid;
 
@@ -51,7 +50,7 @@ pub async fn create_draft(
 }
 
 /// Internal implementation — takes a raw pool so it is easy to test and reuse.
-pub async fn create_draft_db(db: &SqlitePool, input: CreateDraftInput) -> Result<Draft, String> {
+pub async fn create_draft_db(db: &DbPool, input: CreateDraftInput) -> Result<Draft, String> {
     let id = Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
 
@@ -100,7 +99,7 @@ pub async fn get_drafts(
 
 /// Internal implementation — easy to call from tests with an in-memory database.
 pub async fn get_drafts_db(
-    db: &SqlitePool,
+    db: &DbPool,
     status: Option<String>,
 ) -> Result<Vec<Draft>, String> {
     let drafts = if let Some(s) = status {
@@ -128,7 +127,7 @@ pub async fn get_draft(
     get_draft_db(&state.db, id).await
 }
 
-pub async fn get_draft_db(db: &SqlitePool, id: String) -> Result<Option<Draft>, String> {
+pub async fn get_draft_db(db: &DbPool, id: String) -> Result<Option<Draft>, String> {
     sqlx::query_as::<_, Draft>("SELECT * FROM drafts WHERE id = ?")
         .bind(id)
         .fetch_optional(db)
@@ -148,7 +147,7 @@ pub async fn update_draft(
 
 /// Internal implementation. Builds a dynamic UPDATE while keeping the code readable.
 pub async fn update_draft_db(
-    db: &SqlitePool,
+    db: &DbPool,
     id: String,
     input: UpdateDraftInput,
 ) -> Result<(), String> {
@@ -203,7 +202,7 @@ pub async fn delete_draft(state: State<'_, AppState>, id: String) -> Result<(), 
     delete_draft_db(&state.db, id).await
 }
 
-pub async fn delete_draft_db(db: &SqlitePool, id: String) -> Result<(), String> {
+pub async fn delete_draft_db(db: &DbPool, id: String) -> Result<(), String> {
     sqlx::query("DELETE FROM drafts WHERE id = ?")
         .bind(id)
         .execute(db)
@@ -223,7 +222,7 @@ pub async fn clear_pending_drafts(state: State<'_, AppState>) -> Result<ClearPen
     clear_pending_drafts_db(&state.db).await
 }
 
-pub async fn clear_pending_drafts_db(db: &SqlitePool) -> Result<ClearPendingDraftsResult, String> {
+pub async fn clear_pending_drafts_db(db: &DbPool) -> Result<ClearPendingDraftsResult, String> {
     let result = sqlx::query("DELETE FROM drafts WHERE status = ?")
         .bind(draft_status::PENDING)
         .execute(db)
@@ -259,7 +258,7 @@ pub async fn mark_draft_posted(
 }
 
 pub async fn mark_draft_posted_db(
-    db: &SqlitePool,
+    db: &DbPool,
     id: String,
     x_post_id: String,
 ) -> Result<(), String> {
@@ -291,8 +290,11 @@ pub async fn mark_draft_posted_db(
 mod tests {
     use super::*;
 
-    async fn create_test_pool() -> SqlitePool {
-        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+    async fn create_test_pool() -> DbPool {
+        // Use AnyPool + sqlite memory URL for fast isolated tests even when the app
+        // is configured for a remote Postgres DB via DATABASE_URL.
+        sqlx::any::install_default_drivers();
+        let pool = sqlx::any::AnyPoolOptions::new()
             .max_connections(1)
             .connect("sqlite::memory:")
             .await
@@ -546,7 +548,7 @@ mod tests {
     }
 }
 
-async fn load_grok_settings(db: &SqlitePool) -> Result<(String, String), String> {
+async fn load_grok_settings(db: &DbPool) -> Result<(String, String), String> {
     let xai_key = get_setting_db(db, settings::XAI_API_KEY.to_string())
         .await?
         .unwrap_or_default();
@@ -556,14 +558,14 @@ async fn load_grok_settings(db: &SqlitePool) -> Result<(String, String), String>
     Ok((xai_key, grok_model))
 }
 
-async fn require_xai_api_key(db: &SqlitePool) -> Result<String, String> {
+async fn require_xai_api_key(db: &DbPool) -> Result<String, String> {
     get_setting_db(db, settings::XAI_API_KEY.to_string())
         .await?
         .filter(|key| !key.is_empty())
         .ok_or_else(|| "xAI API key is required. Set it in Settings.".to_string())
 }
 
-async fn require_setting(db: &SqlitePool, key: &str, label: &str) -> Result<String, String> {
+async fn require_setting(db: &DbPool, key: &str, label: &str) -> Result<String, String> {
     get_setting_db(db, key.to_string())
         .await?
         .filter(|value| !value.is_empty())
@@ -571,7 +573,7 @@ async fn require_setting(db: &SqlitePool, key: &str, label: &str) -> Result<Stri
 }
 
 async fn fetch_sources_for_run(
-    db: &SqlitePool,
+    db: &DbPool,
     run_id: &str,
 ) -> Result<Vec<research::ResearchSource>, String> {
     sqlx::query_as("SELECT * FROM research_sources WHERE run_id = ? ORDER BY published_at DESC")
@@ -582,7 +584,7 @@ async fn fetch_sources_for_run(
 }
 
 async fn fetch_run_with_sources(
-    db: &SqlitePool,
+    db: &DbPool,
     run_id: &str,
 ) -> Result<ResearchRunWithSources, String> {
     let run: ResearchRun = sqlx::query_as("SELECT * FROM research_runs WHERE id = ?")
@@ -597,7 +599,7 @@ async fn fetch_run_with_sources(
 }
 
 async fn fetch_latest_run_with_sources(
-    db: &SqlitePool,
+    db: &DbPool,
 ) -> Result<Option<ResearchRunWithSources>, String> {
     let run: Option<ResearchRun> = sqlx::query_as(
         "SELECT * FROM research_runs ORDER BY run_at DESC LIMIT 1",
@@ -640,7 +642,7 @@ fn draft_has_stored_image(draft: &Draft) -> bool {
 }
 
 async fn maybe_resolve_preview_image(
-    db: &SqlitePool,
+    db: &DbPool,
     app_data_dir: &Path,
     draft_id: &str,
     draft: &Draft,
@@ -739,10 +741,10 @@ pub struct HistoricalResearchSource {
     pub published_at: Option<String>,
     pub source_name: String,
     pub source_type: String,
-    pub retweet_count: Option<i32>,
-    pub like_count: Option<i32>,
-    pub reply_count: Option<i32>,
-    pub quote_count: Option<i32>,
+    pub retweet_count: Option<i64>,
+    pub like_count: Option<i64>,
+    pub reply_count: Option<i64>,
+    pub quote_count: Option<i64>,
     pub original_id: Option<String>,
     pub media_url: Option<String>,
     pub used_at: Option<String>,
@@ -837,7 +839,7 @@ pub async fn run_research(state: State<'_, AppState>, mode: Option<String>) -> R
         .bind(&source.title)
         .bind(&source.content)
         .bind(&source.url)
-        .bind(source.published_at.as_ref().map(|dt| dt.to_rfc3339()))
+        .bind(source.published_at.clone())
         .bind(&source.source_name)
         .bind(&source.source_type)
         .bind(source.retweet_count)
@@ -920,7 +922,7 @@ pub async fn reset_research_data(state: State<'_, AppState>) -> Result<ResetRese
     reset_research_data_db(&state.db).await
 }
 
-pub async fn reset_research_data_db(db: &SqlitePool) -> Result<ResetResearchResult, String> {
+pub async fn reset_research_data_db(db: &DbPool) -> Result<ResetResearchResult, String> {
     let mut tx = db
         .begin()
         .await
@@ -977,7 +979,7 @@ pub async fn reset_research_data_db(db: &SqlitePool) -> Result<ResetResearchResu
 // ============================================
 
 pub async fn mark_research_sources_used_db(
-    db: &SqlitePool,
+    db: &DbPool,
     source_ids: &[String],
 ) -> Result<(), String> {
     if source_ids.is_empty() {
@@ -1050,7 +1052,7 @@ pub async fn generate_drafts_from_latest_research(
 }
 
 async fn fetch_research_source_by_id(
-    db: &SqlitePool,
+    db: &DbPool,
     source_id: &str,
 ) -> Result<research::ResearchSource, String> {
     sqlx::query_as("SELECT * FROM research_sources WHERE id = ?")
@@ -1147,7 +1149,7 @@ pub async fn generate_draft_from_input(
 // X posting (T-007)
 // ============================================
 
-pub async fn load_x_credentials_db(db: &SqlitePool) -> Result<x_post::XCredentials, String> {
+pub async fn load_x_credentials_db(db: &DbPool) -> Result<x_post::XCredentials, String> {
     Ok(x_post::XCredentials {
         api_key: require_setting(db, settings::X_CONSUMER_KEY, "X API key (consumer key)").await?,
         api_secret: require_setting(
@@ -1186,7 +1188,7 @@ pub async fn resolve_draft_image(
 }
 
 pub async fn resolve_draft_image_db(
-    db: &SqlitePool,
+    db: &DbPool,
     app_data_dir: &Path,
     id: String,
 ) -> Result<Draft, String> {
@@ -1269,7 +1271,7 @@ pub async fn post_draft_to_x(state: State<'_, AppState>, id: String) -> Result<D
 // ============================================
 
 /// Ensure the settings table exists (called lazily)
-async fn ensure_settings_table(db: &SqlitePool) {
+async fn ensure_settings_table(db: &DbPool) {
     sqlx::query(
         r#"
         CREATE TABLE IF NOT EXISTS settings (
@@ -1291,7 +1293,7 @@ pub async fn get_setting(
     get_setting_db(&state.db, key).await
 }
 
-pub async fn get_setting_db(db: &SqlitePool, key: String) -> Result<Option<String>, String> {
+pub async fn get_setting_db(db: &DbPool, key: String) -> Result<Option<String>, String> {
     ensure_settings_table(db).await;
 
     let result: Option<(String,)> = sqlx::query_as("SELECT value FROM settings WHERE key = ?")
@@ -1312,7 +1314,7 @@ pub async fn set_setting(
     set_setting_db(&state.db, key, value).await
 }
 
-pub async fn set_setting_db(db: &SqlitePool, key: String, value: String) -> Result<(), String> {
+pub async fn set_setting_db(db: &DbPool, key: String, value: String) -> Result<(), String> {
     ensure_settings_table(db).await;
 
     sqlx::query(
@@ -1339,7 +1341,7 @@ pub async fn delete_setting(
     delete_setting_db(&state.db, key).await
 }
 
-pub async fn delete_setting_db(db: &SqlitePool, key: String) -> Result<(), String> {
+pub async fn delete_setting_db(db: &DbPool, key: String) -> Result<(), String> {
     ensure_settings_table(db).await;
 
     sqlx::query("DELETE FROM settings WHERE key = ?")
