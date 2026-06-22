@@ -3,6 +3,7 @@ import { updateDraft, parseSources, type Draft } from '../lib/db'
 import { getDraftDisplayImage } from '../lib/draftImage'
 import { DraftImage } from './DraftImage'
 import { openUrl } from '@tauri-apps/plugin-opener'
+import { getCharCountClass, formatCharCount } from '../lib/draftUtils'
 
 export interface DraftEditModalProps {
   draft: Draft | null
@@ -31,21 +32,28 @@ export function DraftEditModal({ draft, open, onClose, onSaved }: DraftEditModal
   const previewText = text.trim() || '(empty post)'
 
   const handleSave = async () => {
-    if (!text.trim()) {
+    const trimmed = text.trim()
+    if (!trimmed) {
       setError('Post text cannot be empty.')
       return
+    }
+    if (trimmed.length > 280) {
+      const proceed = window.confirm(
+        'This post is over 280 characters — X may truncate it or reject the post.\n\nPost anyway?'
+      )
+      if (!proceed) return
     }
 
     setSaving(true)
     setError(null)
     try {
       await updateDraft(draft.id, {
-        text: text.trim(),
+        text: trimmed,
         image_url: imageUrl.trim() || null,
       })
       onSaved({
         ...draft,
-        text: text.trim(),
+        text: trimmed,
         image_url: imageUrl.trim() || null,
         updated_at: new Date().toISOString(),
       })
@@ -70,6 +78,9 @@ export function DraftEditModal({ draft, open, onClose, onSaved }: DraftEditModal
             onChange={(e) => setText(e.target.value)}
             data-testid="draft-edit-text"
           />
+          <div className={`text-xs mt-1 ${getCharCountClass(text.length)}`} data-testid="draft-edit-char-count">
+            {formatCharCount(text.length)}
+          </div>
         </label>
 
         <label className="form-control w-full mb-3">

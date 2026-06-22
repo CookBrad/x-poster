@@ -3,7 +3,7 @@
 > **Living document.** This file captures architecture decisions, design discussions, tradeoffs, and the current task breakdown.
 > Update it after any significant conversation or when priorities shift.
 >
-> Last updated: 2026-06-21 (Broad "what improvements would you make?" planning session: comprehensive exploration + prioritized roadmap covering secure storage (P0), dead code + unified prefs + char counter, UX polish (tabs/toasts/rationale snippets/posted search), friendly errors, image controls, scheduler; root + session plan files updated. Prior link color + originality work carried forward.)
+> Last updated: 2026-06-21 (Tab persistence + toasts + background ops; follow-up fix: after any successful generation (custom input, per-source, bulk from run, or research+gen pipeline) we now call the new onBumpRefresh callback. This increments the shared refreshToken (also used by "Reload data" navbar button), which triggers the always-mounted PostsTab's useEffect to call loadDrafts() — so new pending drafts appear immediately in the Posts list even if the user is already on (or switches to) the Posts tab during/after generation. (Previously the list would be stale until manual reload.) Busy indicator + toasts + state persistence all continue to work. Tests 70 green, build clean.)
 
 ---
 
@@ -149,24 +149,11 @@ Add new decisions here as we make them.
 
 ---
 
-## Current State (as of late May 2025)
+## Current State
 
-### Done
-- Tauri + React + Tailwind + daisyUI scaffold
-- SQLite database with `drafts` and `post_history` tables + migrations
-- Full Rust CRUD commands for drafts (`create_draft`, `get_drafts`, `update_draft`, `delete_draft`, `mark_draft_posted`)
-- Basic "Test xAI Connection" working in Settings (frontend calls xAI directly)
-- Placeholder Queue UI with fake draft cards
+See the detailed **Session Log** entries (most recent at top) + README "Current Status" for the authoritative picture. MVP core loop (research + generate in 3 paths + styles + edit/preview with images/rationale/clickable sources + post + persisted settings + tests) is complete and has received multiple polish increments (links, originality/standalone prompts + rationale, reset UX, char counter + prefs unification, etc. as of 2026-06-21).
 
-### In Progress / Partial
-- None for Phase 1 — MVP feature set is complete.
-
-### Not Started (Phase 2+)
-- Background scheduler / tray icon (T-009)
-- Secure key storage (T-011)
-- Richer source attribution UI (T-012)
-- Unsplash / advanced image support
-- Secure packaging distribution
+Phase 1 tickets largely done. Phase 2 items tracked above with some now partial/complete via incremental work. "Not started" notes below are historical.
 
 ---
 
@@ -266,9 +253,10 @@ This is the minimum that makes the app actually useful.
 - [ ] **T-009** — Background scheduler (research on a timer)
 - [ ] **T-010** — System tray icon + menu (macOS first)
 - [ ] **T-011** — Secure key storage (Tauri plugin or OS keychain)
-- [ ] **T-012** — Better source attribution UI (show real links, not just "Sources: ...")
-- [ ] **T-013** — Draft history / posted log with direct X links
-- [ ] **T-014** — Basic image support (attach or generate simple visuals)
+- [x] **T-012** — Better source attribution UI (show real links, not just "Sources: ...") — direct clickable links + X URLs in sources (opener plugin) + richer display/counts in cards/history (2026-06-21 polish batch)
+- [x] **T-013** — Draft history / posted log with direct X links — posted subtab + "View on X" + search/filter potential (links work + history usable)
+- [~] **T-014** — Basic image support (attach or generate simple visuals) — advanced backend (meta/og/grok-meme + persist + upload) + edit UI; further controls added in 2026-06-21 polish
+- Additional polish completed in 2026-06-21 batch: removed dead plugin-sql dep, implemented live 280 char counter (using pre-existing CSS classes) + over-limit guard, unified draft count/style prefs to DB settings (single source of truth + migration from LS)
 
 ### Phase 3 — Advanced / Nice to Have
 

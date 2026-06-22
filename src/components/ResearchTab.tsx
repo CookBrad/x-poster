@@ -23,8 +23,10 @@ import {
   draftCountOptions,
   loadDraftGenerationCount,
   loadDraftGenerationStyle,
-  saveDraftGenerationCount,
-  saveDraftGenerationStyle,
+  loadPersistedDraftCount,
+  loadPersistedDraftStyle,
+  savePersistedDraftCount,
+  savePersistedDraftStyle,
 } from '../lib/draftGeneration'
 import { errorMessage } from '../lib/errors'
 import { researchModeLabel, researchModeRequiresXaiKey } from '../lib/researchMode'
@@ -32,18 +34,46 @@ import { countUnusedResearchSources, isResearchSourceUsed } from '../lib/researc
 import { CustomDraftInput } from './CustomDraftInput'
 import { formatResearchSourceDate, ResearchSourceCard } from './ResearchSourceCard'
 import { HistoricalSourcesList } from './HistoricalSourcesList'
+import {
+  LAST_RESEARCH_SUBTAB_KEY,
+  LAST_RESEARCH_MODE_KEY,
+} from '../lib/constants'
 
 type ResearchSubTab = 'current' | 'historical'
 
-export function ResearchTab() {
-  const [activeSubTab, setActiveSubTab] = useState<ResearchSubTab>('current')
+export function ResearchTab({
+  refreshToken = 0,
+  onShowToast,
+  onBusyChange,
+  onBumpRefresh,
+}: {
+  refreshToken?: number
+  onShowToast?: (message: string, kind?: 'success' | 'error' | 'info') => void
+  onBusyChange?: (delta: number) => void
+  onBumpRefresh?: () => void
+}) {
+  const [activeSubTab, setActiveSubTab] = useState<ResearchSubTab>(() => {
+    try {
+      const saved = localStorage.getItem(LAST_RESEARCH_SUBTAB_KEY) as ResearchSubTab | null
+      return saved === 'current' || saved === 'historical' ? saved : 'current'
+    } catch {
+      return 'current'
+    }
+  })
   const [currentRun, setCurrentRun] = useState<ResearchRunWithSources | null>(null)
   const [hasXaiKey, setHasXaiKey] = useState(false)
   const [historicalResetKey, setHistoricalResetKey] = useState(0)
   const [showResetConfirm, setShowResetConfirm] = useState(false)
   const [draftCount, setDraftCount] = useState(loadDraftGenerationCount)
   const [draftStyle, setDraftStyle] = useState<DraftStyle>(loadDraftGenerationStyle)
-  const [researchMode, setResearchMode] = useState<ResearchMode>(RESEARCH_MODE.both)
+  const [researchMode, setResearchMode] = useState<ResearchMode>(() => {
+    try {
+      const saved = localStorage.getItem(LAST_RESEARCH_MODE_KEY) as ResearchMode | null
+      return saved === 'rss' || saved === 'x' || saved === 'both' ? saved : RESEARCH_MODE.both
+    } catch {
+      return RESEARCH_MODE.both
+    }
+  })
   const [loading, setLoading] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [generatingSourceId, setGeneratingSourceId] = useState<string | null>(null)
@@ -52,12 +82,54 @@ export function ResearchTab() {
   const [pipelinePhase, setPipelinePhase] = useState<'idle' | 'research' | 'generate'>('idle')
   const [isResetting, setIsResetting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [resetSuccess, setResetSuccess] = useState<string | null>(null)
-  const [generateSuccess, setGenerateSuccess] = useState<string | null>(null)
 
   const isPipelineBusy = pipelinePhase !== 'idle'
   const isBusy =
     loading || generating || isPipelineBusy || generatingSourceId !== null || generatingFromInput
+
+  // Hydrate count/style from DB (authoritative). Falls back to LS + migrates on first use.
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      try {
+        const [count, style] = await Promise.all([
+          loadPersistedDraftCount(),
+          loadPersistedDraftStyle(),
+        ])
+        if (!cancelled) {
+          setDraftCount(count)
+          setDraftStyle(style)
+        }
+      } catch (e) {
+        // Non-fatal; sync LS fallbacks from useState remain in effect.
+        console.warn('Failed to hydrate draft prefs from DB, using current values', e)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  // Persist sub-tab and research mode (UI state)
+  useEffect(() => {
+    try {
+      localStorage.setItem(LAST_RESEARCH_SUBTAB_KEY, activeSubTab)
+    } catch {}
+  }, [activeSubTab])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(LAST_RESEARCH_MODE_KEY, researchMode)
+    } catch {}
+  }, [researchMode])
+
+  // Respond to global Reload data button
+  useEffect(() => {
+    if (refreshToken > 0) {
+      void loadLatestRun()
+      setHistoricalResetKey((k) => k + 1) // force historical list refetch too
+    }
+  }, [refreshToken])
 
   const loadLatestRun = async () => {
     try {
@@ -76,7 +148,7 @@ export function ResearchTab() {
   const handleRunResearch = async () => {
     setLoading(true)
     setError(null)
-    setGenerateSuccess(null)
+    onBusyChange?.(1)
 
     try {
       const newRun = await runResearch(researchMode)
@@ -89,11 +161,15 @@ export function ResearchTab() {
       )
     } finally {
       setLoading(false)
+      onBusyChange?.(-1)
     }
   }
 
   const handleDraftStyleChange = (value: string) => {
-    setDraftStyle(saveDraftGenerationStyle(value as DraftStyle))
+    const next = value as DraftStyle
+    setDraftStyle(next)
+    // fire-and-forget to DB (with LS compat during transition)
+    void savePersistedDraftStyle(next)
   }
 
   const handleDraftCountChange = (value: string) => {
@@ -101,7 +177,9 @@ export function ResearchTab() {
     if (Number.isNaN(parsed)) {
       return
     }
-    setDraftCount(saveDraftGenerationCount(parsed))
+    const next = parsed
+    setDraftCount(next)
+    void savePersistedDraftCount(next)
   }
 
   const handleGenerateFromInput = async () => {
@@ -112,65 +190,65 @@ export function ResearchTab() {
 
     setGeneratingFromInput(true)
     setError(null)
-    setGenerateSuccess(null)
+    onBusyChange?.(1)
 
     try {
       const drafts = await generateDraftFromInput(trimmed, draftStyle)
-      setGenerateSuccess(
-        `Generated ${drafts.length} post(s) from your input. Open the Posts tab to review.`
-      )
+      onShowToast?.(`Generated ${drafts.length} post(s) from your input.`)
+      onBumpRefresh?.()
       setCustomInput('')
     } catch (generateError: unknown) {
       console.error(generateError)
       setError(errorMessage(generateError, 'Failed to generate post from your input.'))
     } finally {
       setGeneratingFromInput(false)
+      onBusyChange?.(-1)
     }
   }
 
   const handleGenerateFromSource = async (sourceId: string) => {
     setGeneratingSourceId(sourceId)
     setError(null)
-    setGenerateSuccess(null)
+    onBusyChange?.(1)
 
     try {
       const drafts = await generateDraftFromSource(sourceId, 1, draftStyle)
-      setGenerateSuccess(
-        `Generated ${drafts.length} post(s) from that story. Open the Posts tab to review.`
-      )
+      onShowToast?.(`Generated ${drafts.length} post(s) from that story.`)
+      onBumpRefresh?.()
       await refreshResearchViews()
     } catch (generateError: unknown) {
       console.error(generateError)
       setError(errorMessage(generateError, 'Failed to generate post from this story.'))
     } finally {
       setGeneratingSourceId(null)
+      onBusyChange?.(-1)
     }
   }
 
   const handleGenerateDrafts = async () => {
     setGenerating(true)
     setError(null)
-    setGenerateSuccess(null)
+    onBusyChange?.(1)
 
     try {
       const drafts = await generateDraftsFromLatestResearch(draftCount, draftStyle)
-      setGenerateSuccess(
-        `Generated ${drafts.length} draft(s) in ${draftStyle} style. Open the Posts tab to review.`
-      )
+      onShowToast?.(`Generated ${drafts.length} draft(s) in ${draftStyle} style.`)
+      onBumpRefresh?.()
       await refreshResearchViews()
     } catch (generateError: unknown) {
       console.error(generateError)
       setError(errorMessage(generateError, 'Draft generation failed.'))
     } finally {
       setGenerating(false)
+      onBusyChange?.(-1)
     }
   }
 
   const handleResearchAndGenerate = async () => {
     setError(null)
-    setGenerateSuccess(null)
     let phase: 'research' | 'generate' = 'research'
     setPipelinePhase('research')
+    onBusyChange?.(1)
 
     try {
       const newRun = await runResearch(researchMode)
@@ -180,9 +258,8 @@ export function ResearchTab() {
       phase = 'generate'
       setPipelinePhase('generate')
       const drafts = await generateDraftsFromLatestResearch(draftCount, draftStyle)
-      setGenerateSuccess(
-        `Researched ${newRun.sources.length} source(s) and generated ${drafts.length} draft(s) in ${draftStyle} style. Open the Posts tab to review.`
-      )
+      onShowToast?.(`Researched + generated ${drafts.length} draft(s) in ${draftStyle} style.`)
+      onBumpRefresh?.()
       await refreshResearchViews()
     } catch (pipelineError: unknown) {
       console.error(pipelineError)
@@ -193,6 +270,7 @@ export function ResearchTab() {
       setError(errorMessage(pipelineError, fallback))
     } finally {
       setPipelinePhase('idle')
+      onBusyChange?.(-1)
     }
   }
 
@@ -200,7 +278,7 @@ export function ResearchTab() {
     setShowResetConfirm(false)
     setIsResetting(true)
     setError(null)
-    setResetSuccess(null)
+    onBusyChange?.(1)
 
     try {
       const result = await resetResearchData()
@@ -215,7 +293,7 @@ export function ResearchTab() {
       setHistoricalResetKey((previous) => previous + 1)
       await loadLatestRun()
       setActiveSubTab('historical')
-      setResetSuccess(
+      onShowToast?.(
         `Deleted ${result.deleted_sources} source(s) and ${result.deleted_runs} research run(s).`
       )
     } catch (resetError: unknown) {
@@ -223,6 +301,7 @@ export function ResearchTab() {
       setError(`Failed to reset research data: ${errorMessage(resetError)}`)
     } finally {
       setIsResetting(false)
+      onBusyChange?.(-1)
     }
   }
 
@@ -339,8 +418,7 @@ export function ResearchTab() {
       )}
 
       {error && <div className="alert alert-error mb-4">{error}</div>}
-      {resetSuccess && <div className="alert alert-success mb-4">{resetSuccess}</div>}
-      {generateSuccess && <div className="alert alert-success mb-4">{generateSuccess}</div>}
+      {/* Successes now shown via global toasts (survive tab switches) */}
 
       {activeSubTab === 'current' && (
         <div>

@@ -72,3 +72,14 @@ export function isPendingDraft(draft: Draft): boolean {
 export function isPostedDraft(draft: Draft): boolean {
   return draft.status === DRAFT_STATUS.posted
 }
+
+/** Returns the appropriate .char-* class for a post length vs X's 280 limit. */
+export function getCharCountClass(length: number): string {
+  if (length > 280) return 'char-danger'
+  if (length > 260) return 'char-warn'
+  return 'char-ok'
+}
+
+export function formatCharCount(length: number, limit = 280): string {
+  return `${length} / ${limit}`
+}

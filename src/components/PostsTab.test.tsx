@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import PostsTab from './PostsTab'
 import { getDrafts, postDraftToX, clearPendingDrafts, parseSources, type Draft } from '../lib/db'
 import { invoke } from '@tauri-apps/api/core'
+import { LAST_POSTS_SUBTAB_KEY } from '../lib/constants'
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(),
@@ -52,6 +53,7 @@ const postedDraft: Draft = {
 describe('PostsTab', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    localStorage.clear()
     mockGetDrafts.mockResolvedValue([pendingDraft, postedDraft])
     mockInvoke.mockImplementation(async (cmd: string) => {
       if (cmd === 'resolve_draft_image') return pendingDraft
@@ -79,6 +81,7 @@ describe('PostsTab', () => {
       expect(screen.getByText(/Already posted tweet/i)).toBeInTheDocument()
     })
     expect(screen.queryByText(/Fresh take on Robotaxi/i)).not.toBeInTheDocument()
+    expect(localStorage.getItem(LAST_POSTS_SUBTAB_KEY)).toBe('posted')
   })
 
   it('clears all pending posts after confirmation', async () => {

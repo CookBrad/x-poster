@@ -187,3 +187,12 @@ export async function hasXCredentials(): Promise<boolean> {
 export async function testXCredentials(): Promise<string> {
   return invoke<string>('test_x_credentials', {});
 }
+
+// Generic setting helpers (used for prefs like draft count/style that live in the settings table).
+export async function getSetting(key: string): Promise<string | null> {
+  return invoke<string | null>('get_setting', { key })
+}
+
+export async function setSetting(key: string, value: string): Promise<void> {
+  return invoke<void>('set_setting', { key, value })
+}

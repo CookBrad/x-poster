@@ -73,4 +73,32 @@ describe('DraftEditModal', () => {
     expect(await screen.findByTestId('draft-edit-error')).toHaveTextContent(/cannot be empty/i)
     expect(mockUpdateDraft).not.toHaveBeenCalled()
   })
+
+  it('renders live char count with appropriate class and updates on edit', () => {
+    render(<DraftEditModal draft={draft} open onClose={vi.fn()} onSaved={vi.fn()} />)
+
+    const countEl = screen.getByTestId('draft-edit-char-count')
+    expect(countEl).toHaveTextContent('18 / 280') // "Original post text".length
+    expect(countEl.className).toContain('char-ok')
+
+    fireEvent.change(screen.getByTestId('draft-edit-text'), {
+      target: { value: 'x'.repeat(265) },
+    })
+    expect(screen.getByTestId('draft-edit-char-count')).toHaveTextContent('265 / 280')
+    expect(screen.getByTestId('draft-edit-char-count').className).toContain('char-warn')
+  })
+
+  it('prompts confirm and can cancel when saving over 280 chars', async () => {
+    const original = window.confirm
+    const confirmSpy = vi.fn(() => false)
+    ;(window as any).confirm = confirmSpy
+    render(<DraftEditModal draft={draft} open onClose={vi.fn()} onSaved={vi.fn()} />)
+
+    fireEvent.change(screen.getByTestId('draft-edit-text'), { target: { value: 'x'.repeat(290) } })
+    fireEvent.click(screen.getByTestId('draft-edit-save'))
+
+    expect(confirmSpy).toHaveBeenCalled()
+    expect(mockUpdateDraft).not.toHaveBeenCalled()
+    ;(window as any).confirm = original
+  })
 })

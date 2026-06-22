@@ -96,9 +96,10 @@ The window title is "x-poster". Default size is comfortable for a laptop.
    - Click the corresponding Run button (or "Research + Generate" for the full pipeline).
    - Browse sources in Current or Historical. Click **Generate Post** on any individual source, or use the bulk buttons.
 5. Switch to the **Posts** tab (your queue).
-   - Edit text + optional image URL.
-   - See the original research sources + Grok’s “intended insight / added value” rationale.
-   - **Approve & Post** (or Skip / Delete).
+   - Edit text + optional image URL (live 280-char counter with color warnings appears in the editor and on pending cards).
+   - See the original research sources (clickable direct links) + Grok’s “intended insight / added value” rationale.
+   - **Approve & Post** (over-280 gets a confirm; or Skip / Delete).
+   - Feedback (e.g. "Generated 3 drafts", "Posted to X") appears as dismissible toasts that remain visible even if you switch tabs. The top "Reload data" refreshes the current tab without a full app reload. Tab and sub-tab choices (Pending/Posted, Current/Historical, RSS/X/Both) are remembered across refreshes.
 6. Posted items move to the posted view. You can still delete the local history record (it never deletes the actual tweet).
 
 All research, drafts, settings, and credentials live in:

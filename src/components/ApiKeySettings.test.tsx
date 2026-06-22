@@ -62,7 +62,7 @@ describe('ApiKeySettings', () => {
   })
 
   it('shows error message on unhappy path (failed save)', async () => {
-    vi.mocked(invoke).mockImplementation(async (cmd: string, args?: { key?: string }) => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string, args?: any) => {
       if (cmd === 'get_setting') return null
       if (cmd === 'set_setting' && args?.key === 'xai_api_key') {
         throw new Error('Some backend error')

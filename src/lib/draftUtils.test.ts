@@ -4,6 +4,8 @@ import {
   countDraftsByStatus,
   formatSourceLabels,
   isPendingDraft,
+  getCharCountClass,
+  formatCharCount,
 } from './draftUtils'
 import { DRAFT_STATUS } from './constants'
 import type { Draft } from './db'
@@ -48,5 +50,19 @@ describe('draftUtils', () => {
   it('identifies pending drafts', () => {
     expect(isPendingDraft(baseDraft)).toBe(true)
     expect(isPendingDraft({ ...baseDraft, status: DRAFT_STATUS.posted })).toBe(false)
+  })
+
+  it('computes char count class for X 280 limit', () => {
+    expect(getCharCountClass(100)).toBe('char-ok')
+    expect(getCharCountClass(260)).toBe('char-ok')
+    expect(getCharCountClass(261)).toBe('char-warn')
+    expect(getCharCountClass(280)).toBe('char-warn')
+    expect(getCharCountClass(281)).toBe('char-danger')
+    expect(getCharCountClass(300)).toBe('char-danger')
+  })
+
+  it('formats char count string', () => {
+    expect(formatCharCount(142)).toBe('142 / 280')
+    expect(formatCharCount(280, 280)).toBe('280 / 280')
   })
 })

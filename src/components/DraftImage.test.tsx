@@ -20,7 +20,6 @@ const draft = {
   updated_at: '',
   posted_at: null,
   x_post_id: null,
-  generation_rationale: null,
 }
 
 describe('DraftImage', () => {

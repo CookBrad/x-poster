@@ -13,6 +13,8 @@ export const SETTING_KEYS = {
   xConsumerSecret: 'x_consumer_secret',
   xAccessToken: 'x_access_token',
   xAccessTokenSecret: 'x_access_token_secret',
+  draftGenerationCount: 'draft_generation_count',
+  draftGenerationStyle: 'draft_generation_style',
 } as const
 
 export const DEFAULT_GROK_MODEL = 'grok-4.3'
@@ -21,6 +23,12 @@ export const DEFAULT_DRAFT_GENERATION_COUNT = 3
 export const MAX_DRAFT_GENERATION_COUNT = 10
 export const DRAFT_COUNT_STORAGE_KEY = 'draft_generation_count'
 export const DRAFT_STYLE_STORAGE_KEY = 'draft_generation_style'
+
+// UI state persistence (localStorage, for tab/subtab/mode so user doesn't lose place on reload)
+export const LAST_ACTIVE_TAB_KEY = 'xposter_last_tab'
+export const LAST_POSTS_SUBTAB_KEY = 'xposter_last_posts_subtab'
+export const LAST_RESEARCH_SUBTAB_KEY = 'xposter_last_research_subtab'
+export const LAST_RESEARCH_MODE_KEY = 'xposter_last_research_mode'
 
 export const DRAFT_STYLE = {
   insight: 'insight',

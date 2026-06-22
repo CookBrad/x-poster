@@ -18,15 +18,35 @@ import {
   formatSourceLabel,
   isPendingDraft,
   isPostedDraft,
+  getCharCountClass,
+  formatCharCount,
 } from '../lib/draftUtils'
 import { DraftEditModal } from './DraftEditModal'
 import { DraftImage } from './DraftImage'
 import { openUrl } from '@tauri-apps/plugin-opener'
+import { LAST_POSTS_SUBTAB_KEY } from '../lib/constants'
 
 type PostsSubview = 'pending' | 'posted'
 
-export default function PostsTab() {
-  const [subTab, setSubTab] = useState<PostsSubview>('pending')
+export default function PostsTab({
+  refreshToken = 0,
+  onShowToast,
+  onBusyChange,
+  onBumpRefresh: _onBumpRefresh,
+}: {
+  refreshToken?: number
+  onShowToast?: (message: string, kind?: 'success' | 'error' | 'info') => void
+  onBusyChange?: (delta: number) => void
+  onBumpRefresh?: () => void
+}) {
+  const [subTab, setSubTab] = useState<PostsSubview>(() => {
+    try {
+      const saved = localStorage.getItem(LAST_POSTS_SUBTAB_KEY) as PostsSubview | null
+      return saved === 'pending' || saved === 'posted' ? saved : 'pending'
+    } catch {
+      return 'pending'
+    }
+  })
   const [drafts, setDrafts] = useState<Draft[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -56,6 +76,20 @@ export default function PostsTab() {
   useEffect(() => {
     void loadDrafts()
   }, [loadDrafts])
+
+  // Persist subtab choice
+  useEffect(() => {
+    try {
+      localStorage.setItem(LAST_POSTS_SUBTAB_KEY, subTab)
+    } catch {}
+  }, [subTab])
+
+  // Respond to global "Reload data"
+  useEffect(() => {
+    if (refreshToken > 0) {
+      void loadDrafts()
+    }
+  }, [refreshToken, loadDrafts])
 
   const { pending: pendingCount, posted: postedCount } = countDraftsByStatus(drafts)
 
@@ -137,14 +171,17 @@ export default function PostsTab() {
   const handleApprovePost = async (draft: Draft) => {
     setPostingId(draft.id)
     setError(null)
+    onBusyChange?.(1)
     try {
       await postDraftToX(draft.id)
       await loadDrafts()
       setSubTab('posted')
+      onShowToast?.('Draft posted to X! View it in the Posted sub-tab.')
     } catch (postError: unknown) {
       reportError(`Failed to post to X: ${errorMessage(postError)}`)
     } finally {
       setPostingId(null)
+      onBusyChange?.(-1)
     }
   }
 
@@ -314,7 +351,14 @@ function DraftCard({
       <div className="card-body">
         <div className="flex justify-between text-xs opacity-70 mb-1">
           <span className="badge badge-sm">{draft.status}</span>
-          <span>{formatDraftTimestamp(draft)}</span>
+          <span>
+            {formatDraftTimestamp(draft)}
+            {isPendingDraft(draft) && (
+              <span className={`ml-2 ${getCharCountClass(draft.text.length)}`}>
+                {formatCharCount(draft.text.length)}
+              </span>
+            )}
+          </span>
         </div>
 
         <p className="font-medium whitespace-pre-wrap">{draft.text}</p>

@@ -22,7 +22,7 @@ const mockHasXCredentials = vi.mocked(hasXCredentials)
 describe('SettingsTab', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockInvoke.mockImplementation(async (cmd: string, args?: { key?: string }) => {
+    mockInvoke.mockImplementation(async (cmd: string, args?: any) => {
       if (cmd === 'get_setting' && args?.key === 'xai_api_key') return 'sk-saved-key'
       if (cmd === 'get_setting') return null
       return undefined
