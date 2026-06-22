@@ -26,9 +26,70 @@ pub fn sources_are_user_provided(sources: &[ResearchSource]) -> bool {
     !sources.is_empty() && sources.iter().all(is_custom_source)
 }
 
+/// Simple similarity for gathering a small group of related stories when a
+/// primary source (especially a thin headline/X post or legal/regulatory item)
+/// does not contain enough concrete facts on its own.
+/// Scores on shared title keywords + entity signals (e.g. court names, amendment
+/// years, locations, programs like Starship). Used to implement "if not enough
+/// info in one post, base the draft on a group of similar stories".
+pub fn find_similar_sources(
+    primary: &ResearchSource,
+    all_sources: &[ResearchSource],
+    max: usize,
+) -> Vec<ResearchSource> {
+    if all_sources.is_empty() {
+        return vec![];
+    }
+
+    let primary_title = primary.title.to_lowercase();
+
+    // Signals that indicate "this is the same story" across coverage.
+    // Include both general (court, ruling) and story-specific when present in primary.
+    let mut signals: Vec<String> = vec![
+        "supreme court".into(), "texas supreme".into(), "boca chica".into(),
+        "beach access".into(), "open beaches".into(), "amendment".into(),
+        "litigation".into(), "ruling".into(), "sue".into(), "injunction".into(),
+        "closure".into(), "delay".into(), "starship".into(), "pad".into(),
+    ];
+    // Add tokens from the primary title (proper nouns, years, key nouns)
+    for token in primary_title.split(|c: char| !c.is_alphanumeric()) {
+        if token.len() >= 4 && !["the", "and", "for", "with", "over", "from"].contains(&token) {
+            signals.push(token.to_string());
+        }
+    }
+
+    let mut scored: Vec<(i32, &ResearchSource)> = Vec::new();
+    for s in all_sources {
+        if s.url == primary.url || s.id == primary.id {
+            continue;
+        }
+        let t = format!("{} {}", s.title, s.content).to_lowercase();
+        let mut score = 0;
+        for sig in &signals {
+            if t.contains(sig) {
+                score += 2;
+            }
+        }
+        if s.source_name == primary.source_name {
+            score += 1;
+        }
+        if score > 0 {
+            scored.push((score, s));
+        }
+    }
+
+    scored.sort_by_key(|(sc, _)| std::cmp::Reverse(*sc));
+    scored
+        .into_iter()
+        .take(max)
+        .map(|(_, s)| s.clone())
+        .collect()
+}
+
 fn shared_generation_rules(user_provided: bool) -> &'static str {
     if user_provided {
         r#"SHARED RULES (user-requested link or topic):
+- EVERY POST MUST BE BACKED BY SPECIFIC FACTS FROM THE SOURCES (MANDATORY). Every claim, description of a problem or prior situation ("why it was a slowdown"), implication, or forward-looking statement must be directly traceable to concrete, named details in the provided Sources (or the Related/similar coverage if present): the exact year + text/operative effect of an amendment or law, the parties/litigants, the precise holding or procedural outcome (e.g. "unanimous", "with prejudice", "no private right of action"), quantified operational impacts (hours closed, number of delays, specific test stands-downs), numbers, dates, quotes, or events reported in the excerpts. Do NOT use vague summary language ("years of litigation", "recurring legal blocks", "repeated delays", "can tighten", "ended years of...") unless the source material supplies the actual duration, count, names, or details. Ground every draft with multiple specific, citable facts from the sources rather than alluding to or summarizing them at high level. The post must read as if written by someone who read the full reporting and related coverage.
 - MANDATORY: You MUST always generate a post from the provided source. Never refuse, return empty output, or explain why you cannot write it.
 - The user intentionally pasted this link or topic — cover what the source is actually about, including political, controversial, or non-Musk-company content.
 - Stay factual and on-topic to the source. Do not force a Tesla/SpaceX angle when the source is unrelated.
@@ -48,6 +109,7 @@ fn shared_generation_rules(user_provided: bool) -> &'static str {
 - Each post must be under 280 characters (single tweet). Count cashtags toward the limit."#
     } else {
         r#"SHARED RULES (all styles):
+- EVERY POST MUST BE BACKED BY SPECIFIC FACTS FROM THE SOURCES (MANDATORY). Every claim, description of a problem or prior situation ("why it was a slowdown"), implication, or forward-looking statement must be directly traceable to concrete, named details in the provided Sources (or the Related/similar coverage if present): the exact year + text/operative effect of an amendment or law, the parties/litigants, the precise holding or procedural outcome (e.g. "unanimous", "with prejudice", "no private right of action"), quantified operational impacts (hours closed, number of delays, specific test stands-downs), numbers, dates, quotes, or events reported in the excerpts. Do NOT use vague summary language ("years of litigation", "recurring legal blocks", "repeated delays", "can tighten", "ended years of...") unless the source material supplies the actual duration, count, names, or details. Ground every draft with multiple specific, citable facts from the sources rather than alluding to or summarizing them at high level. The post must read as if written by someone who read the full reporting and related coverage.
 - CONSTRUCTIVELY BULLISH FRAMING: lean positive on Elon and his companies when grounded in facts. No doom narratives or cynical dunking.
 - STOCK TAGS WHEN MARKET-RELEVANT (ONE CASHTAG MAX):
   - Include at most ONE cashtag per post — never use both $TSLA and $SPCX together.
@@ -93,7 +155,10 @@ GOOD (standalone financial story with context + facts + support — RSS + extern
 BAD (regurgitation): "Teslarati reports Tesla expanded Robotaxi in Austin." (just repeats the source)
 BAD (shallow): "Robotaxi expansion is interesting for the company and its stock." (no specific implication or re-expression)
 BAD (over-attribution + no context): "As @SawyerMerritt noted, FSD is Tesla's Full Self-Driving system." (attributes common knowledge; also fails to set any scene)
-BAD (reply-like, assumes reader knows the external event): "Tesla's $40B cash, zero debt, and steady profits create headroom to self-fund Optimus and robotaxi ramps without dilution, a structural advantage Moody's rating overlooks. $TSLA" (no explanation of what Moody's actually did or said; no grounding details; feels like a direct comment on the news + article)"#
+BAD (reply-like, assumes reader knows the external event): "Tesla's $40B cash, zero debt, and steady profits create headroom to self-fund Optimus and robotaxi ramps without dilution, a structural advantage Moody's rating overlooks. $TSLA" (no explanation of what Moody's actually did or said; no grounding details; feels like a direct comment on the news + article)"
+
+GOOD (legal/regulatory story drawing concrete facts from primary article + related/similar coverage — the motivating case for "every post needs facts" + grouping when single source is thin): "Texas's 2009 Open Beaches Amendment — approved by 77% of voters — wrote into the constitution the public's unrestricted right to use Gulf beaches as a permanent easement. A 2013 law carved out an exception allowing temporary closures for space flight safety. SaveRGV, later joined by the Sierra Club and Carrizo/Comecrudo Nation, sued to block SpaceX's use of that exception at Boca Chica. The Texas Supreme Court unanimously ruled the amendment itself creates no private right to sue to enforce access. Justice Huddle's opinion dismisses the case with prejudice, ending the years-long threat of injunctions that had forced repeated stands-downs (up to ~450 hours of closures per year). Starship pad work and test flight cadence can now proceed without that recurring legal overhang. $SPCX"
+BAD (vague, no backing facts, exactly the style to avoid): "Texas Supreme Court unanimously ended years of litigation, ruling the 2009 amendment creates no private right to sue over Boca Chica beach access. The decision removes recurring legal blocks that had forced repeated delays to Starship pad operations." (no amendment text, no 2013 law, no plaintiffs, no 450 hrs, no 'with prejudice', no specific prior impact — fails the 'facts to back up the post' rule)"#
 }
 
 fn informative_style_rules() -> &'static str {
@@ -296,7 +361,8 @@ pub fn build_generation_user_prompt(
          {}\n\
          {}\n\
          {}\n\
-         - Include at most one cashtag ($TSLA or $SPCX) when stock-relevant.\n\n\
+         - Include at most one cashtag ($TSLA or $SPCX) when stock-relevant.\n\
+         - If the Sources list below contains Related/similar coverage items (after the main research sources), use them only for additional concrete facts and details. primary_source_index must still refer to one of the main sources (the first N items).\n\n\
          ## Sources\n{}\n\n\
          ## User's recent posted drafts (DO NOT repeat these angles)\n{}\n",
         count,
@@ -558,6 +624,81 @@ pub fn parse_generated_drafts(content: &str) -> Result<Vec<GeneratedDraftItem>, 
     Ok(items)
 }
 
+/// Prepare the list of sources that will be shown to Grok for generation.
+/// - For thin sources (short content or major-development signals in title), fetch
+///   the linked article's main body and append it (labeled) for concrete facts.
+/// - Additionally collect 1-3 similar/related stories from the batch (using
+///   find_similar_sources) and include their (enriched) text as extra context.
+/// The primary sources keep their original order/indices for primary_source_index.
+/// Related items are appended so they appear later in the numbered Sources list
+/// (the prompt instructions tell the model to use only the main ones for the index).
+pub async fn prepare_sources_for_generation(original: &[ResearchSource]) -> Vec<ResearchSource> {
+    if original.is_empty() {
+        return vec![];
+    }
+
+    let mut effective: Vec<ResearchSource> = original.to_vec();
+
+    // Threshold and signals for "this source is probably too thin on its own or is a
+    // major factual/legal story that benefits from related coverage".
+    let thin_len = 550usize;
+    let major_signals = [
+        "supreme court", "court ruling", "amendment", "litigation", "beach access",
+        "boca chica", "delay", "injunction", "sue", "block", "approval", "regulatory",
+    ];
+
+    for s in &mut effective {
+        let content_len = s.content.chars().count();
+        let title_lower = s.title.to_lowercase();
+        let needs_more = content_len < thin_len
+            || major_signals.iter().any(|sig| title_lower.contains(sig));
+
+        if needs_more && !s.url.is_empty() {
+            if let Some(rich) = crate::draft_image::fetch_and_extract_article_text(&s.url).await {
+                if !rich.trim().is_empty() {
+                    let label = " [Additional article body from source URL — use for concrete names, numbers, amendment text, holding details, quantified impacts, etc.: ";
+                    s.content = format!("{}{}{}]", s.content.trim_end(), label, rich.trim());
+                }
+            }
+        }
+    }
+
+    // For any (original) source that still looks like it needs a group, append related
+    // similar stories (enriched if possible). This gives Grok a small cluster instead of
+    // a single thin post.
+    let mut appended = Vec::new();
+    for (_i, orig) in original.iter().enumerate() {
+        let content_len = orig.content.chars().count();
+        let title_lower = orig.title.to_lowercase();
+        let needs_group = content_len < thin_len
+            || major_signals.iter().any(|sig| title_lower.contains(sig));
+
+        if needs_group {
+            let similars = find_similar_sources(orig, original, 2);
+            for sim in similars {
+                // enrich the similar too if thin
+                let mut sim = sim;
+                if sim.content.chars().count() < thin_len && !sim.url.is_empty() {
+                    if let Some(rich) = crate::draft_image::fetch_and_extract_article_text(&sim.url).await {
+                        if !rich.trim().is_empty() {
+                            let label = " [Additional article body — use for more facts: ";
+                            sim.content = format!("{}{}{}]", sim.content.trim_end(), label, rich.trim());
+                        }
+                    }
+                }
+                // Avoid exact dups (by url or id)
+                if !effective.iter().any(|e| e.url == sim.url || (!e.id.is_empty() && e.id == sim.id)) &&
+                   !appended.iter().any(|a: &ResearchSource| a.url == sim.url || (!a.id.is_empty() && a.id == sim.id)) {
+                    appended.push(sim);
+                }
+            }
+        }
+    }
+
+    effective.extend(appended);
+    effective
+}
+
 pub async fn call_grok_for_drafts(
     xai_api_key: &str,
     model: &str,
@@ -571,11 +712,18 @@ pub async fn call_grok_for_drafts(
         .build()
         .map_err(|e| e.to_string())?;
 
+    // Enrich thin sources with full article body + gather a small group of similar/related
+    // stories (from the current batch) when the primary does not contain enough concrete
+    // facts on its own. This implements "if the article or headline doesn't have enough
+    // information then grok should get more" and "don't base the draft on a single post
+    // but a group of similar stories".
+    let effective_sources = prepare_sources_for_generation(sources).await;
+
     let body = serde_json::json!({
         "model": model,
         "input": [
-            {"role": "system", "content": build_generation_system_prompt(style, sources)},
-            {"role": "user", "content": build_generation_user_prompt(sources, recent_posted_texts, count, style)}
+            {"role": "system", "content": build_generation_system_prompt(style, &effective_sources)},
+            {"role": "user", "content": build_generation_user_prompt(&effective_sources, recent_posted_texts, count, style)}
         ],
         "temperature": generation_temperature(style),
         "max_output_tokens": 4000
@@ -824,6 +972,16 @@ mod tests {
         // Verify one of the new GOOD example texts (the financial standalone with Moody's-style external rating) is embedded
         assert!(prompt
             .contains("has raised equity multiple times during prior heavy-capex growth phases"));
+
+        // Current iteration: universal "every post needs facts to back up the post" rule.
+        // Must be present in the system prompt for all styles/generation paths.
+        assert!(prompt.contains("EVERY POST MUST BE BACKED BY SPECIFIC FACTS FROM THE SOURCES"));
+        assert!(prompt.contains("Do NOT use vague summary language"));
+        assert!(prompt.contains("Related/similar coverage if present"));
+
+        // Verify the new fact-dense legal GOOD example (the user's motivating weak post turned into a concrete, group-sourced version) is embedded
+        assert!(prompt.contains("Carrizo/Comecrudo Nation"));
+        assert!(prompt.contains("up to ~450 hours of closures per year"));
     }
 
     #[test]

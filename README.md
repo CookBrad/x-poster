@@ -136,7 +136,7 @@ Bundles appear in `src-tauri/target/release/bundle/`.
 - **Research**:
   - RSS: `feed-rs` (currently Teslarati + Not a Tesla App; 14-day freshness filter).
   - X: Grok Responses API + the `x_search` (live_search) tool with `sources: [{type:"x"}]`. Strict “Musk companies only”, high-confidence, anti-hallucination rules. No X API keys ever used for discovery.
-- **Draft generation**: Grok (JSON output) with rich style-specific system prompts that emphasize *fresh insight / anti-regurgitation*, one stock cashtag max (`$TSLA` or `$SPCX`), inline attribution rules, and recent-posted deduplication. Post-processing normalizes attribution and enforces cashtag limits.
+- **Draft generation**: Grok (JSON output) with rich style-specific system prompts that emphasize *fresh insight / anti-regurgitation* + a universal "every post must be backed by specific facts from the sources" rule (no vague summaries like "years of litigation"). When a source is thin or the story is major, the generation path automatically enriches with the linked article's main body + pulls 1-3 similar/related stories from the research batch so Grok has concrete details (amendment text, numbers, litigants, quantified impacts, etc.) to cite. One stock cashtag max (`$TSLA` or `$SPCX`), inline attribution rules, recent-posted deduplication. Post-processing normalizes attribution and enforces cashtag limits.
 - **Images**: Meta extraction for custom sources + optional Grok image generation for Meme style.
 - **Posting**: Pure manual OAuth 1.0a request signing (no official X SDK). Human approval gate is non-negotiable in the MVP.
 - **Everything local**. Settings, research history, drafts, and X credentials are all in the local SQLite file.

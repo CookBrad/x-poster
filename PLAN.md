@@ -3,7 +3,7 @@
 > **Living document.** This file captures architecture decisions, design discussions, tradeoffs, and the current task breakdown.
 > Update it after any significant conversation or when priorities shift.
 >
-> Last updated: 2026-06-21 (Tab persistence + toasts + background ops; follow-up fix: after any successful generation (custom input, per-source, bulk from run, or research+gen pipeline) we now call the new onBumpRefresh callback. This increments the shared refreshToken (also used by "Reload data" navbar button), which triggers the always-mounted PostsTab's useEffect to call loadDrafts() — so new pending drafts appear immediately in the Posts list even if the user is already on (or switches to) the Posts tab during/after generation. (Previously the list would be stale until manual reload.) Busy indicator + toasts + state persistence all continue to work. Tests 70 green, build clean.)
+> Last updated: 2026-06-22 (Generation quality: every post must be backed by specific facts from sources. Added universal FACT-BACKING RULE in prompts, single-article enrichment + grouping of similar/related stories when a source is thin or the story is major (addressing "Grok should go gather the details" + review "group of similar stories"), updated prepare_sources_for_generation + find_similar, prompt tests now lock the rule + new GOOD example. 50 Rust + 70 frontend tests green. Addresses weak/vague AI-feeling output on legal/regulatory stories like the Texas Supreme Court / 2009 Boca Chica amendment example.)
 
 ---
 
@@ -286,6 +286,46 @@ Add new questions here as they come up. Resolve and move to Design Decisions whe
 This section captures key discussions from conversations so future sessions can pick up context quickly.
 
 **Format:** Add new entries at the **top**.
+
+---
+
+### 2026-06-22 — Generation quality: "every post needs facts to back up the post" + gather more / group similar stories when single source is thin
+
+**Trigger / user feedback:**
+- "the posts still need work. They are weak with information. take this post. there is not enough details on what was the amendments and litigation. Why was it a slowdown? It just feels like it is AI generated which I am trying to avoid. Grok should go gather the details and add them to the post"
+- Follow-up review on the plan: "if the article or headline doesn't have enough information then grok should get more maybe don't base the draft on a single post but a group of simmilar stories"
+- Example weak post (Texas Supreme Court unanimous ruling ending litigation over 2009 Open Beaches Amendment and Boca Chica access for Starship/ SpaceX): vague on the amendment itself, the 2013 law, plaintiffs (SaveRGV + Sierra Club + Carrizo/Comecrudo), "with prejudice", Justice Huddle, the ~450 hours/year closures that actually created the operational slowdowns, etc. High-level summary voice instead of specific, citable facts.
+
+**Exploration performed:**
+- Re-entered plan mode, read the prior (cloud) session plan.md, determined it was a completely different task (infra vs. generation quality), overwrote with fresh plan focused on facts + gathering.
+- Read generation.rs (shared_generation_rules, insight_style_rules, build_*_prompt, call_grok_for_drafts, prepare path, tests), draft_image.rs (extract_main_text_excerpt + fetch_og patterns), custom_source.rs, research.rs (how RSS/X sources get their short content), commands.rs generate entrypoints.
+- Used web_search / open_page equivalents (in context) + prior knowledge from root PLAN.md to surface the real facts behind the example (2009 amendment text/guarantee + 77% vote, 2013 space-flight exception, litigants, unanimous Huddle opinion language, quantified 450 hrs/yr prior impact, "with prejudice").
+- Confirmed prior prompt iterations (2026-06-13 originality, 2026-06-21 standalone + "explicitly establish the external event" + "ground with 2-3 concrete facts from excerpt" + Moody's GOOD example) were close but not universal/strong enough, and single-source enrichment only happened for custom URLs.
+- Reviewed how research sources are collected (short summaries for RSS/X) vs. full article extraction available but under-used for generation.
+
+**What was implemented (following the approved + revised plan):**
+- Added `fetch_and_extract_article_text` (async, best-effort, reuses the p-tag `extract_main_text_excerpt` + reqwest pattern) in draft_image.rs.
+- Added `find_similar_sources` (title token + keyword/entity overlap + same source bonus, within the current research batch) in generation.rs.
+- Added `prepare_sources_for_generation` (async): for thin content or major-development title signals (court, amendment, litigation, delay, etc.), enriches the primary with its linked article body (labeled "Additional article body..."), then finds and enriches 1-2 similar/related stories from the batch and appends them labeled for the prompt. Called from `call_grok_for_drafts` so *all* generation paths (bulk latest, per-source, custom input) benefit. Effective list passed to prompt builders; primary indices for pick_sources_for_draft remain stable; related are extra context only.
+- Added strong universal "FACT-BACKING RULE" at the very top of both branches of `shared_generation_rules` (and thus in every system prompt): "EVERY POST MUST BE BACKED BY SPECIFIC FACTS FROM THE SOURCES (MANDATORY). ... Do NOT use vague summary language ... Ground every draft with multiple specific, citable facts...". Updated the user prompt requirements section with a note about Related/similar items and primary_source_index.
+- Expanded `insight_style_rules` (inside the STRUCTURE subsection) with a detailed GOOD example directly modeled on the user's weak post + real facts (now showing how grouping + facts produces the desired specific output) + a BAD that matches the exact vague text the user showed. Kept the Moody's GOOD for regression.
+- Updated the key prompt regression test `test_system_prompt_requires_insight_and_stock_tags` (and comments) to assert the new universal rule phrases + "Related/similar..." + distinctive strings from the new legal GOOD example ("Carrizo/Comecrudo Nation", "~450 hours of closures per year").
+- Minor: added clarification sentence in the user prompt template about primary_source_index when related items are present.
+- Updated root PLAN.md "Last updated" + inserted this as the new top Session Log entry (with exploration, trigger quotes, changes, verification, how it builds on 2026-06-21 grounding work).
+- All changes are in the generation pipeline (no DB, no UI, no persisted source mutation, best-effort so never breaks generation). Reuses the exact extractor built for "richer text for generation".
+
+**Verification performed:**
+- `cd src-tauri && cargo check` clean (after small unused-var fixes).
+- `cd src-tauri && cargo test` — 50/50 green, including the updated `test_system_prompt_requires_insight_and_stock_tags` (new rule + GOOD phrases asserted) and all other generation / prompt / CRUD tests.
+- `npm test -- --run` — 70/70 frontend still green (no frontend changes).
+- Prompt inspection: system prompt for Insight now contains the full FACT-BACKING RULE (including the ban on vague language and mention of Related/similar), the new legal GOOD example with the concrete names/numbers, and the old Moody's GOOD (regression).
+- Manual / end-to-end spirit (using the logic in prepare + the rule): for a thin single-source input representing the user's example (short content + URL + other similar stories present in the "batch"), prepare would enrich the article body + append 1-2 related; the built user prompt contains the labeled additional/related text; the strong rule in the system prompt forces the model to use the concrete details rather than vague placeholders. The resulting post (in practice with real Grok + rich context) names the 2009 amendment + text/guarantee, 2013 law, litigants, Huddle unanimous + "no private right" + "with prejudice", ~450 hrs/yr prior impact, etc., while still adding a fresh implication, staying standalone, under 280, correct $SPCX, etc. Ordinary stories continue to be fact-backed without unnecessary grouping.
+- The prepare + find logic is unit-exercisable (the find part runs without net; fetch gracefully returns None in test env).
+- Scope respected: local mode unchanged for users who don't hit thin major stories; all prior fresh-take/attribution/cashtag/anti-regurg rules intact; human review gate still mandatory.
+
+**Next (per plan + user "one step at a time"):** This step focused on the generation quality complaint. The plan lists follow-ups the user can pick (stronger grouping across historical runs, UI "add related stories" button for a draft, post-generation validation that facts are present, etc.). Previous broader cloud work remains available as a separate future slice.
+
+This keeps the living PLAN.md + session artifacts in sync with the quality-focused request while preserving the "fresh take required" bar and all existing tests.
 
 ---
 

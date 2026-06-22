@@ -186,6 +186,30 @@ pub fn extract_main_text_excerpt(html: &str) -> Option<String> {
     }
 }
 
+/// Best-effort fetch of the page + main article body extraction (p-tag based).
+/// Returns None on any error (network, non-success, parse, short result).
+/// Used by generation to "get more" details when a research source excerpt
+/// (or headline) is thin, so Grok has concrete facts/numbers/events to back the post.
+/// Respects is_article_url (skips x.com/twitter).
+pub async fn fetch_and_extract_article_text(url: &str) -> Option<String> {
+    if !url.starts_with("http") || !is_article_url(url) {
+        return None;
+    }
+
+    let client = Client::builder()
+        .timeout(Duration::from_secs(8))
+        .user_agent("x-poster/1.0 (article enrichment for richer draft sources; gather details when single source is thin)")
+        .build()
+        .ok()?;
+
+    let resp = client.get(url).send().await.ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    let html = resp.text().await.ok()?;
+    extract_main_text_excerpt(&html)
+}
+
 fn is_plausible_image_url(url: &str) -> bool {
     let trimmed = url.trim();
     (trimmed.starts_with("https://") || trimmed.starts_with("http://"))

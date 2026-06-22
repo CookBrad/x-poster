@@ -251,7 +251,7 @@ X SEARCH ONLY (CRITICAL):
 
 If verbatim recent posts are limited, still return the best substantive items you can. Do not default to an empty array."#;
 
-    let user_prompt = "Find recent substantive posts/quotes from high-signal voices (analysts, reporters, employees, etc.) about Tesla, SpaceX, xAI, Neuralink or The Boring Company. Use search to find real posts on X only. Completely ignore general web results. Only include items where you are highly confident the text, author, date, and link are accurate and real. If unsure, skip the item. Quality and accuracy over quantity. Return up to 15 items. For each, include a why_interesting note that highlights a non-obvious implication or angle (see JSON schema). Include the confidence field for each.";
+    let user_prompt = "Find recent substantive posts/quotes from high-signal voices (analysts, reporters, employees, etc.) about Tesla, SpaceX, xAI, Neuralink or The Boring Company. Use search to find real posts on X only. Completely ignore general web results. Only include items where you are highly confident the text, author, date, and link are accurate and real. If unsure, skip the item. Quality and accuracy over quantity. Return up to 15 items. For each, include a why_interesting note that highlights a non-obvious implication or angle (see JSON schema). For legal, regulatory, court, amendment, litigation, or government-action stories, the why_interesting note should call out any quantified operational impact, prior delays to testing/pad work/cadence, or concrete effects mentioned. Include the confidence field for each.";
 
     let body = serde_json::json!({
         "model": model,
