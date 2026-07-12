@@ -10,6 +10,25 @@ use crate::DbPool;
 use std::path::Path;
 use std::time::Duration;
 
+// Lifted exemplars to consts per strategy: one source of truth, <280 chars, include required facts (77%, 2013, SaveRGV/Sierra/Carrizo, Huddle, w/ prejudice, ~450hrs).
+// Target ~240-279 chars: scene-setting + encompassing context + outcome, not telegram shorthand.
+const BOCA_CHICA_FACT_CORE: &str = "2009: 77% amended TX constitution for permanent public beach easement. 2013 carved Boca Chica launch closures. SaveRGV + Sierra + Carrizo sued. Sup Ct unanimous (Huddle): no private right to sue. Dismissed w/ prejudice - ends ~450hrs/yr legal blocks delaying Starship tests. $SPCX";
+
+const HUMAN_VOICE_GOOD_INSIGHT: &str = "Wait - 2009: 77% locked public beach access into TX constitution. 2013 carved Boca Chica launch closures for SpaceX. SaveRGV + Sierra + Carrizo sued. Sup Ct unanimous (Huddle): no private right to sue. Dismissed w/ prejudice - ~450hrs/yr legal blocks on Starship pads over. $SPCX";
+
+// One source of truth for the core legal fact string used in insight GOOD example (reuses core to avoid dead_code and keep facts identical).
+const INSIGHT_LEGAL_GOOD: &str = BOCA_CHICA_FACT_CORE;
+
+const INSIGHT_MOODYS_GOOD: &str = "Tesla holds ~$40B cash, zero debt, steady profits - real room to self-fund Optimus + unsupervised robotaxi without diluting shareholders. Moody's Baa1/stable flags execution risk but underweights that balance-sheet headroom. (Raised equity in prior capex phases.) $TSLA";
+
+const HUMAN_VOICE_GOOD_INFORMATIVE: &str = BOCA_CHICA_FACT_CORE;
+
+const HUMAN_VOICE_GOOD_FUNNY: &str = "2009: 77% said beaches belong to everyone - then 2013 gave rockets dibs on Boca Chica. SaveRGV + Sierra + Carrizo sued anyway. Sup Ct unanimous (Huddle): constitution has no 'sue' button. Dismissed w/ prejudice. ~450hrs/yr of launch drama? Gone. Starship pad breathes again. $SPCX";
+
+const HUMAN_VOICE_GOOD_WITTY: &str = "2009: beaches ours (77% vote, constitution). 2013: 'except Boca Chica, rockets need it.' Lawsuit? Sup Ct unanimous (Huddle): no private right to sue. Dismissed w/ prejudice - ~450hrs/yr of legal stand-down theater over. Starship gets the beach and the last laugh. $SPCX";
+
+const HUMAN_VOICE_GOOD_MEME: &str = "POV: 2009 - 77% vote permanent public beach access into TX law. 2013 - SpaceX borrows Boca Chica for launches. SaveRGV sues. Sup Ct unanimous (Huddle): no sue button in the amendment. Dismissed w/ prejudice. ~450hrs/yr of pad drama? Poof. Starship back. $SPCX";
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GeneratedDraftItem {
     pub text: String,
@@ -86,8 +105,17 @@ pub fn find_similar_sources(
         .collect()
 }
 
-fn shared_generation_rules(user_provided: bool) -> &'static str {
+const LENGTH_AND_CONTEXT_RULES: &str = r#"- LENGTH + ENCOMPASSING CONTEXT (MANDATORY):
+  - Use the full single-tweet budget: aim for 220-279 characters when the story has enough facts. Longer, scene-setting posts that walk a zero-context reader through the situation outperform ultra-compressed shorthand.
+  - Do NOT write telegram-style fragments, cryptic abbreviations, or bare headline rewrites. Every post must read as a complete mini-story: (1) brief background or prior situation, (2) what happened now, (3) concrete operational/strategic impact, (4) fresh insight or takeaway (insight style) or clear why-it-matters (informative style).
+  - A reader who has never seen the source, the link, or prior coverage must still understand the full arc — who/what/when, what changed, and why it matters — without googling.
+  - Include 3-5 specific, named facts from the sources (years, parties, numbers, holdings, program names) woven into flowing sentences — not a single vague summary line.
+  - BAD (too short, no context): "Court ends Boca Chica lawsuit. Starship can launch faster now. $SPCX" (assumes reader knows the backstory; no amendment, no litigants, no quantified prior impact)
+  - BAD (too compressed): "2009 amend. 2013 law. Sued. No right. Prejudice. 450hrs. $SPCX" (telegram shorthand, not informative)"#;
+
+fn shared_generation_rules(user_provided: bool) -> String {
     if user_provided {
+        format!(
         r#"SHARED RULES (user-requested link or topic):
 - EVERY POST MUST BE BACKED BY SPECIFIC FACTS FROM THE SOURCES (MANDATORY). Every claim, description of a problem or prior situation ("why it was a slowdown"), implication, or forward-looking statement must be directly traceable to concrete, named details in the provided Sources (or the Related/similar coverage if present): the exact year + text/operative effect of an amendment or law, the parties/litigants, the precise holding or procedural outcome (e.g. "unanimous", "with prejudice", "no private right of action"), quantified operational impacts (hours closed, number of delays, specific test stands-downs), numbers, dates, quotes, or events reported in the excerpts. Do NOT use vague summary language ("years of litigation", "recurring legal blocks", "repeated delays", "can tighten", "ended years of...") unless the source material supplies the actual duration, count, names, or details. Ground every draft with multiple specific, citable facts from the sources rather than alluding to or summarizing them at high level. The post must read as if written by someone who read the full reporting and related coverage.
 - MANDATORY: You MUST always generate a post from the provided source. Never refuse, return empty output, or explain why you cannot write it.
@@ -106,8 +134,12 @@ fn shared_generation_rules(user_provided: bool) -> &'static str {
   - Ground the insight with concrete facts/numbers where available.
   - Never use parenthetical handles like (SawyerMerritt).
 - Avoid repeating themes from the user's RECENT POSTS list below.
-- Each post must be under 280 characters (single tweet). Count cashtags toward the limit."#
+- Each post must be under 280 characters (single tweet). Count cashtags toward the limit.
+{}"#,
+        LENGTH_AND_CONTEXT_RULES
+        )
     } else {
+        format!(
         r#"SHARED RULES (all styles):
 - EVERY POST MUST BE BACKED BY SPECIFIC FACTS FROM THE SOURCES (MANDATORY). Every claim, description of a problem or prior situation ("why it was a slowdown"), implication, or forward-looking statement must be directly traceable to concrete, named details in the provided Sources (or the Related/similar coverage if present): the exact year + text/operative effect of an amendment or law, the parties/litigants, the precise holding or procedural outcome (e.g. "unanimous", "with prejudice", "no private right of action"), quantified operational impacts (hours closed, number of delays, specific test stands-downs), numbers, dates, quotes, or events reported in the excerpts. Do NOT use vague summary language ("years of litigation", "recurring legal blocks", "repeated delays", "can tighten", "ended years of...") unless the source material supplies the actual duration, count, names, or details. Ground every draft with multiple specific, citable facts from the sources rather than alluding to or summarizing them at high level. The post must read as if written by someone who read the full reporting and related coverage.
 - CONSTRUCTIVELY BULLISH FRAMING: lean positive on Elon and his companies when grounded in facts. No doom narratives or cynical dunking.
@@ -126,12 +158,16 @@ fn shared_generation_rules(user_provided: bool) -> &'static str {
   - Never use parenthetical handles like (SawyerMerritt).
 - Avoid repeating themes from the user's RECENT POSTS list below.
 - Prefer Musk company/tech angles. If a source is political, still write the post about that source rather than refusing.
-- Each post must be under 280 characters (single tweet). Count cashtags toward the limit."#
+- Each post must be under 280 characters (single tweet). Count cashtags toward the limit.
+{}"#,
+        LENGTH_AND_CONTEXT_RULES
+        )
     }
 }
 
-fn insight_style_rules() -> &'static str {
-    r#"STYLE: INSIGHT (default)
+fn insight_style_rules() -> String {
+    format!(
+        r#"STYLE: INSIGHT (default)
 1. USEFUL INSIGHT REQUIRED — NOT REGURGITATION:
    - Every post must add value beyond the source headline: implications, second-order effects, what bulls/bears miss, competitive context, timeline read-through, margin/capital angle, or strategic significance.
    - Do NOT restate, summarize, or closely paraphrase the source.
@@ -141,62 +177,82 @@ fn insight_style_rules() -> &'static str {
 2. ANTI-PHRASING RULE:
    - Never reuse verbs, sentence structures, or headline phrasing directly from the source or title. Re-express the core implication in fresh language.
 
-3. STRUCTURE FOR STANDALONE INSIGHT POSTS (not replies):
-   - Write as a self-contained mini-story or analysis. A reader who has never seen the source or the news must still understand the full situation.
-   - Briefly set the scene with the key facts/situation from the source (specific numbers, what the external event/rating actually was).
-   - Deliver the fresh insight/implication.
+3. HUMAN VOICE + ENGAGEMENT FOR VIRAL POTENTIAL (applies to all styles):
+   - Sound like a real human enthusiast or insider tweeting to fellow fans, not an AI news summarizer or press release. Use conversational prose full of contractions (it's, don't, we're, that's), natural rhythm, short punchy sentences mixed with longer ones, and a tone that's excited, wry, or in awe — like you're geeking out in the replies.
+   - Strong first-line hook required on every post: Lead with a surprising fact, bold claim, intriguing question, vivid scene, or "wait, what?" moment that stops the scroll and makes people read the rest.
+   - Drive engagement and quotability: Build in lines that feel screenshot-worthy or reply-baiting — subtle emotional resonance (the relief of a bureaucracy lifted, the "this is why it matters for the future" spark), storytelling flow that carries the reader, or implications that make followers think "exactly" or "whoa, never thought of it that way" and want to quote or tag someone.
+   - Weave the key concrete facts from the sources (e.g. the 2009 Open Beaches Amendment with its 77% voter approval and permanent public easement guarantee, the 2013 law creating the space-flight exception, the litigants SaveRGV joined by Sierra Club and Carrizo/Comecrudo Nation, Justice Huddle's unanimous opinion that the amendment creates no private right to sue, "dismissed with prejudice", the ~450 hours per year of closures that actually forced repeated pad stands-downs and test delays) into flowing narrative sentences. Never fall into summary voice, bullet lists, or "the court ruled that..." dryness.
+   - The whole point: higher viral potential. Posts that feel alive, human, worth amplifying and arguing about — while 100% obeying the "EVERY POST MUST BE BACKED BY SPECIFIC FACTS" rule above and never fabricating.
+
+4. STRUCTURE FOR STANDALONE INSIGHT POSTS (not replies):
+   - Write as a self-contained mini-story or analysis with an encompassing arc: background → what happened → concrete impact → fresh insight. A reader who has never seen the source or the news must still understand the full situation without prior context.
+   - Open with scene-setting: the prior law/policy/situation and key facts from the source (specific numbers, parties, what the external event/rating actually was).
+   - Deliver the fresh insight/implication in the second half — never sacrifice context for a punchy one-liner.
+   - Aim for 220-279 characters: use the full tweet budget to include enough facts and context; do not default to ultra-short hot takes.
    - Optionally weave in 1 short supporting fact from general knowledge (historical context, scale of the programs, etc.) that makes the "why this matters" clearer.
    - Use attribution only for non-general, source-specific claims.
 
-GOOD (Tesla/X, general fact without attribution + specific with): "FSD development has long relied on accumulating diverse real-world miles for regulatory progress. As @SawyerMerritt noted, Austin Robotaxi geofence widened again — the read-through for $TSLA isn't the headline, it's faster real-world miles accruing toward regulatory confidence on unsupervised FSD."
-GOOD (RSS): "Per source: Not A Tesla App, Smart Summon on Cybertruck widens the real-world edge-case pool $TSLA needs before robotaxi scale — the product story is data velocity, not the feature checkbox."
-GOOD (deeper originality, supporting fact added): "As @WholeMarsBlog posted on Cybertruck FSD, the real signal is the data loop back to Dojo training — each additional mile in unsupervised mode compounds the software moat faster than any hardware ramp, shifting the margin mix story from cars to bits $TSLA. (Supporting context: autonomy software already shows dramatically higher gross margins than vehicle hardware in Tesla's business model.)"
-GOOD (standalone financial story with context + facts + support — RSS + external rating like Moody's): "Tesla holds roughly $40B in cash with zero net debt and steady profits. This balance sheet gives the company real room to self-fund the massive upfront investment needed for Optimus production and unsupervised robotaxi operations without issuing new shares that would dilute existing owners — a structural advantage that Moody's [specific rating action, e.g. 'Baa1 affirmation with stable outlook while flagging execution risks'] appears to underweight. (Tesla has raised equity multiple times during prior heavy-capex growth phases.) $TSLA"
-BAD (regurgitation): "Teslarati reports Tesla expanded Robotaxi in Austin." (just repeats the source)
-BAD (shallow): "Robotaxi expansion is interesting for the company and its stock." (no specific implication or re-expression)
-BAD (over-attribution + no context): "As @SawyerMerritt noted, FSD is Tesla's Full Self-Driving system." (attributes common knowledge; also fails to set any scene)
-BAD (reply-like, assumes reader knows the external event): "Tesla's $40B cash, zero debt, and steady profits create headroom to self-fund Optimus and robotaxi ramps without dilution, a structural advantage Moody's rating overlooks. $TSLA" (no explanation of what Moody's actually did or said; no grounding details; feels like a direct comment on the news + article)"
-
-GOOD (legal/regulatory story drawing concrete facts from primary article + related/similar coverage — the motivating case for "every post needs facts" + grouping when single source is thin): "Texas's 2009 Open Beaches Amendment — approved by 77% of voters — wrote into the constitution the public's unrestricted right to use Gulf beaches as a permanent easement. A 2013 law carved out an exception allowing temporary closures for space flight safety. SaveRGV, later joined by the Sierra Club and Carrizo/Comecrudo Nation, sued to block SpaceX's use of that exception at Boca Chica. The Texas Supreme Court unanimously ruled the amendment itself creates no private right to sue to enforce access. Justice Huddle's opinion dismisses the case with prejudice, ending the years-long threat of injunctions that had forced repeated stands-downs (up to ~450 hours of closures per year). Starship pad work and test flight cadence can now proceed without that recurring legal overhang. $SPCX"
-BAD (vague, no backing facts, exactly the style to avoid): "Texas Supreme Court unanimously ended years of litigation, ruling the 2009 amendment creates no private right to sue over Boca Chica beach access. The decision removes recurring legal blocks that had forced repeated delays to Starship pad operations." (no amendment text, no 2013 law, no plaintiffs, no 450 hrs, no 'with prejudice', no specific prior impact — fails the 'facts to back up the post' rule)"#
+GOOD (human voice, hooky, conversational, quotable, facts woven naturally — encompassing context version of the Boca Chica resolution, pulling concrete details from primary + related coverage): {insight_good}
+BAD (stilted/AI-like or flat non-engaging, even with facts): "The Texas Supreme Court issued a unanimous ruling written by Justice Rebeca Huddle determining that the 2009 Open Beaches Amendment to the Texas Constitution does not create a private right of action for enforcement of beach access rights against the 2013 space flight activities authorization, resulting in dismissal with prejudice of the litigation brought by SaveRGV and joined by the Sierra Club and Carrizo/Comecrudo Nation of Texas." (dry, list-y, zero hook, zero flow, zero quotable human spark — the exact voice to avoid for engagement/virality)"#,
+        insight_good = HUMAN_VOICE_GOOD_INSIGHT,
+    )
 }
 
-fn informative_style_rules() -> &'static str {
-    r#"STYLE: INFORMATIVE
-- Share the news clearly and concisely — what happened, why it matters in plain terms, no analyst cosplay.
-- Lead with the key fact from the source; add brief context only when it helps the reader understand.
+fn informative_style_rules() -> String {
+    format!(
+        r#"STYLE: INFORMATIVE
+- Share the news clearly and informatively — walk the reader through what happened, the relevant background, and why it matters in plain terms. No analyst cosplay, but do not skimp on context.
+- Lead with scene-setting (prior situation or background from the source), then the development, then the concrete impact. Aim for 220-279 characters when facts allow.
 - Neutral-to-positive tone: informative and useful, not hypey and not bearish.
-- Do NOT force deep market read-through or second-order effects — clarity beats cleverness.
+- Do NOT force deep market read-through or second-order effects — clarity beats cleverness, but clarity requires enough context for a zero-prior-knowledge reader.
 
 GOOD (RSS): "Per source: Teslarati, Tesla expanded Austin Robotaxi coverage again — another step toward wider unsupervised FSD testing in a live city $TSLA"
 GOOD (X): "As @SawyerMerritt reported, Starship completed another successful booster catch — key milestone for faster reuse and launch cadence $SPCX"
-BAD: "Robotaxi expansion changes the regulatory confidence calculus for margin mix read-through." (too analyst-heavy for informative mode)"#
+BAD: "Robotaxi expansion changes the regulatory confidence calculus for margin mix read-through." (too analyst-heavy for informative mode)
+- Apply human voice + engagement for viral potential: strong first-line hooks (surprising fact, bold claim or question), conversational prose full of contractions and natural rhythm, quotable or reply-baiting lines, weave facts into flowing narrative.
+GOOD (human voice, informative style — scene-setting, conversational, facts woven, <280): {informative_good}
+BAD (informative but flat/AI): "The court determined that the constitutional amendment does not provide a private right of action, leading to dismissal of the beach access litigation." (no hook, no voice, no flow)"#,
+        informative_good = HUMAN_VOICE_GOOD_INFORMATIVE,
+    )
 }
 
-fn funny_style_rules() -> &'static str {
-    r#"STYLE: FUNNY
+fn funny_style_rules() -> String {
+    format!(
+        r#"STYLE: FUNNY
 - Write lighthearted, amusing posts — playful fan humor, unexpected angles, smile-worthy punchlines.
 - Still anchor to the source story factually, but the joke or amusing observation is the star.
 - Avoid mean-spirited humor, punch-down jokes, or cruelty.
 - Sound like a funny tech account that actually follows the news, not a comedian doing random bits.
 
 GOOD: "Per source: Teslarati, Tesla widened Austin Robotaxi again — my wallet is ready to be a backseat driver with zero driving skills $TSLA"
-BAD: "lol tesla go brr" (no source anchor or substance)"#
+BAD: "lol tesla go brr" (no source anchor or substance)
+- Apply human voice + engagement for viral potential: strong first-line hooks, conversational prose with contractions, quotable punchlines and playful narrative weave of facts.
+GOOD (human voice, funny style — playful, quotable, facts in joke, <280): {funny_good}
+BAD (funny but not human/grounded): "Haha SpaceX wins beach lawsuit, very funny." (no facts, no hook, no real joke)"#,
+        funny_good = HUMAN_VOICE_GOOD_FUNNY,
+    )
 }
 
-fn witty_style_rules() -> &'static str {
-    r#"STYLE: WITTY
+fn witty_style_rules() -> String {
+    format!(
+        r#"STYLE: WITTY
 - Sharp, clever, concise — wordplay, dry observations, smart one-liners.
 - Sound like the wittiest person in the replies, not a press release or LinkedIn post.
 - Every line should feel intentional and quotable.
 - Still cite the source and stay on-topic.
 
 GOOD: "As @SawyerMerritt flagged, another Austin Robotaxi expansion — FSD collecting city miles faster than most people collect airline points $TSLA"
-BAD: "Robotaxi is expanding which is interesting for the company." (flat, no wit)"#
+BAD: "Robotaxi is expanding which is interesting for the company." (flat, no wit)
+- Apply human voice + engagement for viral potential: strong first-line hooks, conversational prose, sharp quotable one-liners and witty narrative with facts.
+GOOD (human voice, witty style — sharp, quotable one-liner with facts, <280): {witty_good}
+BAD (witty but lifeless): "The ruling clarifies that no private enforcement mechanism exists under the amendment." (clever? no. human? no.)"#,
+        witty_good = HUMAN_VOICE_GOOD_WITTY,
+    )
 }
 
-fn meme_style_rules() -> &'static str {
-    r#"STYLE: MEME
+fn meme_style_rules() -> String {
+    format!(
+        r#"STYLE: MEME
 - Write like a viral tech meme caption: punchy, internet-native, slightly absurd but on-topic.
 - Use recognizable meme caption patterns when they fit (e.g. "POV:", "Nobody: ... Me:", "When X but Y", comparison setups, reaction-post energy).
 - Humor is the point — still tied to the source story, but optimized for shares and laughs.
@@ -204,7 +260,12 @@ fn meme_style_rules() -> &'static str {
 
 GOOD: "POV: source: Teslarati says Austin Robotaxi expanded again and you're already mentally filing your robotaxi commute $TSLA"
 GOOD: "Nobody: ... Me: refreshing Robotaxi maps like it's a limited drop @SawyerMerritt"
-BAD: "Starship had a successful test." (reads like news, not a meme)"#
+BAD: "Starship had a successful test." (reads like news, not a meme)
+- Apply human voice + engagement for viral potential: strong first-line hooks, conversational prose, punchy meme energy with quotable hooks and facts in narrative.
+GOOD (human voice, meme style — punchy viral meme with facts, <280): {meme_good}
+BAD (meme but not human/viral): "Court rules on beach access for launches." (boring text, no meme energy, no facts, no share)"#,
+        meme_good = HUMAN_VOICE_GOOD_MEME,
+    )
 }
 
 /// Build system prompt for the requested post style.
@@ -232,13 +293,34 @@ pub fn build_generation_system_prompt(style: DraftStyle, sources: &[ResearchSour
         "You are an expert social media writer creating posts for a human who covers Elon Musk's companies (Tesla, SpaceX, xAI, Neuralink, Boring Company)."
     };
 
+    let full_style_rules = match style {
+        DraftStyle::Insight => format!(
+            "{}\n\n\
+             GOOD (Tesla/X, general fact without attribution + specific with): \"FSD development has long relied on accumulating diverse real-world miles for regulatory progress. As @SawyerMerritt noted, Austin Robotaxi geofence widened again — the read-through for $TSLA isn't the headline, it's faster real-world miles accruing toward regulatory confidence on unsupervised FSD.\"\n\
+             GOOD (RSS): \"Per source: Not A Tesla App, Smart Summon on Cybertruck widens the real-world edge-case pool $TSLA needs before robotaxi scale — the product story is data velocity, not the feature checkbox.\"\n\
+             GOOD (deeper originality, supporting fact added): \"As @WholeMarsBlog posted on Cybertruck FSD, the real signal is the data loop back to Dojo training — each additional mile in unsupervised mode compounds the software moat faster than any hardware ramp, shifting the margin mix story from cars to bits $TSLA. (Supporting context: autonomy software already shows dramatically higher gross margins than vehicle hardware in Tesla's business model.)\"\n\
+             GOOD (standalone financial story with context + facts + support — RSS + external rating like Moody's): {}\n\
+             BAD (regurgitation): \"Teslarati reports Tesla expanded Robotaxi in Austin.\" (just repeats the source)\n\
+             BAD (shallow): \"Robotaxi expansion is interesting for the company and its stock.\" (no specific implication or re-expression)\n\
+             BAD (over-attribution + no context): \"As @SawyerMerritt noted, FSD is Tesla's Full Self-Driving system.\" (attributes common knowledge; also fails to set any scene)\n\
+             BAD (reply-like, assumes reader knows the external event): \"Tesla's $40B cash, zero debt, and steady profits create headroom to self-fund Optimus and robotaxi ramps without dilution, a structural advantage Moody's rating overlooks. $TSLA\" (no explanation of what Moody's actually did or said; no grounding details; feels like a direct comment on the news + article)\n\n\
+             GOOD (legal/regulatory story drawing concrete facts from primary article + related/similar coverage — the motivating case for \"every post needs facts\" + grouping when single source is thin): {}\n\
+             BAD (vague, no backing facts, exactly the style to avoid): \"Texas Supreme Court unanimously ended years of litigation, ruling the 2009 amendment creates no private right to sue over Boca Chica beach access. The decision removes recurring legal blocks that had forced repeated delays to Starship pad operations.\" (no amendment text, no 2013 law, no plaintiffs, no 450 hrs, no 'with prejudice', no specific prior impact — fails the 'facts to back up the post' rule)\n\n",
+            style_rules, INSIGHT_MOODYS_GOOD, INSIGHT_LEGAL_GOOD
+        ),
+        DraftStyle::Informative => informative_style_rules(),
+        DraftStyle::Funny => funny_style_rules(),
+        DraftStyle::Witty => witty_style_rules(),
+        DraftStyle::Meme => meme_style_rules(),
+    };
+
     format!(
         "{role}\n\n\
          {shared}\n\n\
-         {style_rules}\n\n\
+         {full_style_rules}\n\n\
          Return ONLY a JSON array (no markdown fences), each object:\n\
          {{\n\
-           \"text\": \"the tweet/post text (include at most one of $TSLA or $SPCX when stock-relevant)\",\n\
+           \"text\": \"the tweet/post text — aim for 220-279 chars with encompassing context (include at most one of $TSLA or $SPCX when stock-relevant)\",\n\
            \"rationale\": \"{rationale_hint}\",\n\
            \"primary_author\": \"username without @ for the main source this draft draws from, or null for RSS-only\",\n\
            \"primary_source_index\": 3\n\
@@ -246,7 +328,7 @@ pub fn build_generation_system_prompt(style: DraftStyle, sources: &[ResearchSour
          `primary_source_index` is REQUIRED: the 1-based number from the Sources list above that this draft mainly draws from. Each draft must use a different index when possible.",
         role = role,
         shared = shared_generation_rules(user_provided),
-        style_rules = style_rules,
+        full_style_rules = full_style_rules,
         rationale_hint = rationale_hint,
     )
 }
@@ -262,14 +344,14 @@ pub fn build_generation_user_prompt(
     for (i, s) in sources.iter().take(20).enumerate() {
         // Increased from 400 to give Grok more raw material (facts, context) for synthesizing
         // original implications instead of surface-level rephrasing.
-        let excerpt: String = s.content.chars().take(1200).collect();
+        let excerpt: String = s.content.chars().take(2000).collect();
         let attribution = format_source_attribution(s);
 
         // Special formatting for X research sources that carry a "Why notable" note from discovery.
         let formatted = if let Some(pos) = s.content.find("\n\n[Why notable: ") {
             let main = &s.content[..pos];
             let why = &s.content[pos + "\n\n[Why notable: ".len()..].trim_end_matches(']');
-            let main_excerpt: String = main.chars().take(1200).collect();
+            let main_excerpt: String = main.chars().take(2000).collect();
             format!(
                 "{}. [{}] {} — {}\n   Notable angle from source: {}\n   {} | URL: {}",
                 i + 1,
@@ -337,12 +419,14 @@ pub fn build_generation_user_prompt(
         "- Frame constructively and bullishly toward Elon and his companies while staying factual."
     };
 
+    let length_requirement = "- LENGTH + CONTEXT: Aim for 220-279 characters. Include background, what happened, and why it matters so a reader with zero prior context understands the full story. Do not write ultra-compressed shorthand or bare headline rewrites.";
+
     let style_requirement = match style {
         DraftStyle::Insight => {
-            "- Add genuine insight (implications, read-through, what the market or observers miss) — never just repeat the source. Transform facts into a non-obvious but grounded observation; re-express in fresh language (see style rules for anti-phrasing and the new 'STRUCTURE FOR STANDALONE INSIGHT POSTS' section — self-contained story with scene-setting for any external event/rating, specific facts/numbers from the source, and optional 1 supporting general-knowledge point)."
+            "- Add genuine insight (implications, read-through, what the market or observers miss) — never just repeat the source. Transform facts into a non-obvious but grounded observation; re-express in fresh language (see style rules for anti-phrasing and the 'STRUCTURE FOR STANDALONE INSIGHT POSTS' section — encompassing arc with scene-setting for any external event/rating, specific facts/numbers from the source, and optional 1 supporting general-knowledge point)."
         }
         DraftStyle::Informative => {
-            "- Make each post clear, factual, and useful — explain what happened without heavy analysis."
+            "- Make each post clear, factual, and useful — explain background, what happened, and concrete impact without heavy analysis."
         }
         DraftStyle::Funny => {
             "- Make each post genuinely funny while staying anchored to the source story."
@@ -361,6 +445,7 @@ pub fn build_generation_user_prompt(
          {}\n\
          {}\n\
          {}\n\
+         {}\n\
          - Include at most one cashtag ($TSLA or $SPCX) when stock-relevant.\n\
          - If the Sources list below contains Related/similar coverage items (after the main research sources), use them only for additional concrete facts and details. primary_source_index must still refer to one of the main sources (the first N items).\n\n\
          ## Sources\n{}\n\n\
@@ -368,6 +453,7 @@ pub fn build_generation_user_prompt(
         count,
         style.as_str(),
         style_requirement,
+        length_requirement,
         framing_requirement,
         attribution_requirement,
         source_lines.join("\n"),
@@ -970,8 +1056,7 @@ mod tests {
         assert!(prompt.contains("Weave in 1 short, relevant supporting fact"));
         assert!(prompt.contains("STRUCTURE FOR STANDALONE INSIGHT POSTS"));
         // Verify one of the new GOOD example texts (the financial standalone with Moody's-style external rating) is embedded
-        assert!(prompt
-            .contains("has raised equity multiple times during prior heavy-capex growth phases"));
+        assert!(prompt.contains("Raised equity in prior capex phases"));
 
         // Current iteration: universal "every post needs facts to back up the post" rule.
         // Must be present in the system prompt for all styles/generation paths.
@@ -980,8 +1065,54 @@ mod tests {
         assert!(prompt.contains("Related/similar coverage if present"));
 
         // Verify the new fact-dense legal GOOD example (the user's motivating weak post turned into a concrete, group-sourced version) is embedded
-        assert!(prompt.contains("Carrizo/Comecrudo Nation"));
-        assert!(prompt.contains("up to ~450 hours of closures per year"));
+        assert!(prompt.contains("Carrizo"));
+        assert!(prompt.contains("ends ~450hrs/yr legal blocks delaying Starship tests"));
+
+        // New iteration: human-like, interesting, engaging voice for viral potential (layered on facts rule).
+        // Must be present: hooks, conversational human tone, quotable/reply-sparking elements.
+        assert!(prompt.contains("first-line hook required"));
+        assert!(prompt.contains("conversational prose full of contractions"));
+        assert!(prompt.contains("reply-baiting"));
+        assert!(prompt.contains("viral potential"));
+        assert!(prompt.contains("geeking out in the replies"));
+        assert!(prompt.contains("screenshot-worthy or reply-baiting"));
+        // Length + encompassing context rules
+        assert!(prompt.contains("LENGTH + ENCOMPASSING CONTEXT"));
+        assert!(prompt.contains("aim for 220-279 characters"));
+        assert!(prompt.contains("telegram-style fragments"));
+
+        // Distinctive from the new human-voice GOOD example (narrative, hooked version of Boca Chica facts)
+        assert!(prompt.contains("2009: 77% amended TX constitution for permanent public beach easement"));
+        assert!(prompt.contains("Wait - 2009: 77% locked public beach access into TX constitution"));
+        // Distinctive from the new BAD for stilted voice
+        assert!(prompt.contains("the exact voice to avoid for engagement/virality"));
+
+        // Drive the shipped GOOD examples (consts are the single source of truth for exemplars the model sees via build_ composition; must be <=280 since output limit is 280).
+        assert!(INSIGHT_LEGAL_GOOD.len() <= 280, "INSIGHT_LEGAL_GOOD too long: {}", INSIGHT_LEGAL_GOOD.len());
+        assert!(HUMAN_VOICE_GOOD_INSIGHT.len() <= 280, "HUMAN_VOICE_GOOD_INSIGHT too long: {}", HUMAN_VOICE_GOOD_INSIGHT.len());
+        assert!(HUMAN_VOICE_GOOD_INFORMATIVE.len() <= 280, "HUMAN_VOICE_GOOD_INFORMATIVE too long: {}", HUMAN_VOICE_GOOD_INFORMATIVE.len());
+        assert!(HUMAN_VOICE_GOOD_FUNNY.len() <= 280, "HUMAN_VOICE_GOOD_FUNNY too long: {}", HUMAN_VOICE_GOOD_FUNNY.len());
+        assert!(HUMAN_VOICE_GOOD_WITTY.len() <= 280, "HUMAN_VOICE_GOOD_WITTY too long: {}", HUMAN_VOICE_GOOD_WITTY.len());
+        assert!(HUMAN_VOICE_GOOD_MEME.len() <= 280, "HUMAN_VOICE_GOOD_MEME too long: {}", HUMAN_VOICE_GOOD_MEME.len());
+
+        // Drive shipped sibling human-voice GOOD examples (from consts) in their style prompts; also log CONFIRM for clean verif runs.
+        let inf_p = build_generation_system_prompt(DraftStyle::Informative, &[]);
+        assert!(inf_p.contains(HUMAN_VOICE_GOOD_INFORMATIVE));
+        eprintln!("CONFIRM_INFORMATIVE_HUMAN_GOOD: present");
+        let funny_p = build_generation_system_prompt(DraftStyle::Funny, &[]);
+        assert!(funny_p.contains(HUMAN_VOICE_GOOD_FUNNY));
+        eprintln!("CONFIRM_FUNNY_HUMAN_GOOD: present");
+        let witty_p = build_generation_system_prompt(DraftStyle::Witty, &[]);
+        assert!(witty_p.contains(HUMAN_VOICE_GOOD_WITTY));
+        eprintln!("CONFIRM_WITTY_HUMAN_GOOD: present");
+        let meme_p = build_generation_system_prompt(DraftStyle::Meme, &[]);
+        assert!(meme_p.contains(HUMAN_VOICE_GOOD_MEME));
+        eprintln!("CONFIRM_MEME_HUMAN_GOOD: present");
+
+        eprintln!("CONFIRM_INSIGHT_HUMAN_GOOD: present");
+
+        // Permanent sample for verif: capture the shipped exemplar output.
+        eprintln!("SAMPLE_EXEMPLAR_OUTPUT:\n{}", HUMAN_VOICE_GOOD_INSIGHT);
     }
 
     #[test]
@@ -1007,7 +1138,8 @@ mod tests {
     fn test_system_prompt_informative_style_mentions_clarity() {
         let prompt = build_generation_system_prompt(DraftStyle::Informative, &[]);
         assert!(prompt.contains("STYLE: INFORMATIVE"));
-        assert!(prompt.contains("clearly and concisely"));
+        assert!(prompt.contains("clearly and informatively"));
+        assert!(prompt.contains("do not skimp on context"));
     }
 
     #[test]
@@ -1267,5 +1399,7 @@ mod tests {
         assert!(prompt.contains("exactly 2"));
         assert!(prompt.contains("$TSLA"));
         assert!(prompt.contains("insight"));
+        assert!(prompt.contains("LENGTH + CONTEXT"));
+        assert!(prompt.contains("220-279 characters"));
     }
 }
