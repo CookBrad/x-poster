@@ -3,7 +3,7 @@
 > **Living document.** This file captures architecture decisions, design discussions, tradeoffs, and the current task breakdown.
 > Update it after any significant conversation or when priorities shift.
 >
-> Last updated: 2026-07-13 (Engagement + views bar: shared ENGAGEMENT_AND_VIEWS_RULES on every style path; role/user-prompt views language; tests loop all styles; dump via GENERATION_DUMP_DIR. Layered on prior human-voice/viral + facts dual bar — facts never relaxed for virality.)
+> Last updated: 2026-07-13 (Research recency: prefer hours-old subjects, hard max 72h; filter/rank on RSS + Grok X + draft generation. Prior: engagement/views prompt bar.)
 
 ---
 
@@ -286,6 +286,23 @@ Add new questions here as they come up. Resolve and move to Design Decisions whe
 This section captures key discussions from conversations so future sessions can pick up context quickly.
 
 **Format:** Add new entries at the **top**.
+
+---
+
+### 2026-07-13 — Research recency: subjects hours-old preferred, max a few days
+
+**Objective:** Draft subjects must be recent and relevant — days old at most, preferably hours old.
+
+**What changed:**
+- `RESEARCH_MAX_AGE_HOURS = 72` (hard drop), `RESEARCH_PREFERRED_AGE_HOURS = 36` (rank first).
+- Pure helpers: `parse_published_at` (RFC3339 + relative "2 hours ago"), `filter_and_rank_recent_sources`, `unused_recent_research_sources`.
+- RSS: 14-day window → 72h; rank hours-old first.
+- Grok X discovery prompts require hours-old preferred / max ~3 days; post-filter by age.
+- `run_research` / `fetch_research_sources` rank+filter; `generate_drafts_from_latest_research` only uses unused recent sources.
+- Generation user prompt RECENCY requirement for timely commentary.
+- Tests drive real helpers (stale drop, prefer hours, unused+recency combo); RSS live path asserts age ≤ max.
+
+**Files:** `research.rs`, `commands.rs`, `generation.rs`, `PLAN.md`.
 
 ---
 

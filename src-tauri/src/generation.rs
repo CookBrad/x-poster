@@ -483,6 +483,8 @@ pub fn build_generation_user_prompt(
 
     let engagement_requirement = "- ENGAGEMENT + VIEWS: Open with a scroll-stopping first-line hook; write in human conversational voice (contractions, natural rhythm); include at least one quotable/share-worthy line. Optimize for high engagement and views on X without relaxing the specific-facts or dual-bar rules.";
 
+    let recency_requirement = "- RECENCY: Research subjects are intended to be hours-old (prefer same-day / last few hours) and at most a few days old. Write as timely commentary on a fresh development — not evergreen history or week-old rehash. If multiple sources are listed, lean on the freshest dated ones.";
+
     let style_requirement = match style {
         DraftStyle::Insight => {
             "- DUAL BAR: Pack 3-5 specific named facts from the sources AND add genuine insight (implications, read-through, what the market or observers miss) — never just repeat or paraphrase the source. Transform those facts into a non-obvious but grounded observation; re-express in fresh language (see style rules for anti-phrasing and the 'STRUCTURE FOR STANDALONE INSIGHT POSTS' section — encompassing arc with scene-setting for any external event/rating, specific facts/numbers from the source, and optional 1 supporting general-knowledge point)."
@@ -509,6 +511,7 @@ pub fn build_generation_user_prompt(
          {}\n\
          {}\n\
          {}\n\
+         {}\n\
          - Include at most one cashtag ($TSLA or $SPCX) when stock-relevant.\n\
          - If the Sources list below contains Related/similar coverage items (after the main research sources), use them only for additional concrete facts and details. primary_source_index must still refer to one of the main sources (the first N items).\n\n\
          ## Sources\n{}\n\n\
@@ -518,6 +521,7 @@ pub fn build_generation_user_prompt(
         style_requirement,
         length_requirement,
         engagement_requirement,
+        recency_requirement,
         framing_requirement,
         attribution_requirement,
         source_lines.join("\n"),
@@ -1359,6 +1363,9 @@ mod tests {
         assert!(prompt.contains("ENGAGEMENT + VIEWS"));
         assert!(prompt.contains("scroll-stopping first-line hook"));
         assert!(prompt.contains("quotable/share-worthy"));
+        // Subjects should be treated as hours/days-old, not evergreen
+        assert!(prompt.contains("RECENCY"));
+        assert!(prompt.contains("hours-old") || prompt.contains("last few hours"));
     }
 
     #[test]

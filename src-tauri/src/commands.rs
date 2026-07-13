@@ -699,13 +699,31 @@ pub async fn fetch_research_sources(state: State<'_, AppState>) -> Result<Vec<re
         }
     }
 
+    // Prefer hours-old subjects; drop anything older than RESEARCH_MAX_AGE_HOURS.
+    let mut sources = research::filter_and_rank_recent_sources(sources, chrono::Utc::now());
+    // Within the fresh set, lightly prefer Grok X discovery over RSS when ages tie-ish.
     sources.sort_by(|a, b| {
+        let a_pref = research::source_is_preferred_fresh(a, chrono::Utc::now());
+        let b_pref = research::source_is_preferred_fresh(b, chrono::Utc::now());
+        match (a_pref, b_pref) {
+            (true, false) => return std::cmp::Ordering::Less,
+            (false, true) => return std::cmp::Ordering::Greater,
+            _ => {}
+        }
         let a_prio = if a.source_type == "x_grok" { 0 } else { 1 };
         let b_prio = if b.source_type == "x_grok" { 0 } else { 1 };
         if a_prio != b_prio {
             return a_prio.cmp(&b_prio);
         }
-        b.published_at.cmp(&a.published_at)
+        match (
+            research::source_age_hours(a, chrono::Utc::now()),
+            research::source_age_hours(b, chrono::Utc::now()),
+        ) {
+            (Some(aa), Some(bb)) => aa.cmp(&bb),
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => b.published_at.cmp(&a.published_at),
+        }
     });
 
     sources.truncate(RESEARCH_SOURCE_LIMIT);
@@ -791,11 +809,25 @@ pub async fn run_research(state: State<'_, AppState>, mode: Option<String>) -> R
         }
     }
 
+    // Enforce hours-preferred / few-days-max recency on the combined set.
+    let sources = research::filter_and_rank_recent_sources(sources, chrono::Utc::now());
+
     if sources.is_empty() {
+        let max_h = research::RESEARCH_MAX_AGE_HOURS;
         let msg = match mode.as_str() {
-            "rss" => "No recent RSS articles found from the configured feeds (Teslarati, Tesla Motors Club) — all items older than 14 days or feeds were unreachable.".to_string(),
-            "x" => "Grok did not return any high-signal X posts matching the Musk-companies criteria this time. (See backend logs for the raw Grok response.) Try again later or run RSS only.".to_string(),
-            "both" => "No sources returned: RSS feeds yielded nothing recent and Grok X discovery also returned zero items.".to_string(),
+            "rss" => format!(
+                "No recent RSS articles found from the configured feeds (Teslarati, Not A Tesla App) — all items older than {} hours (~{} days) or feeds were unreachable.",
+                max_h,
+                max_h / 24
+            ),
+            "x" => format!(
+                "Grok did not return any high-signal X posts from the last {} hours matching the Musk-companies criteria. (See backend logs for the raw Grok response.) Try again later or run RSS only.",
+                max_h
+            ),
+            "both" => format!(
+                "No sources returned within the last {} hours: RSS feeds yielded nothing recent enough and Grok X discovery also returned zero fresh items.",
+                max_h
+            ),
             _ => format!("No sources were found for research mode '{}'.", mode),
         };
         log::warn!("run_research: {}", msg);
@@ -1013,12 +1045,23 @@ pub async fn generate_drafts_from_latest_research(
         .await?
         .ok_or("No research run found. Run research first, then generate drafts.".to_string())?;
 
-    let unused_sources = research::unused_research_sources(&latest_run.sources);
-    if unused_sources.is_empty() {
+    let unused_all = research::unused_research_sources(&latest_run.sources);
+    if unused_all.is_empty() {
         return Err(
             "All research sources have already been used. Run new research to find fresh stories."
                 .to_string(),
         );
+    }
+
+    // Prefer hours-old subjects; only draft from sources within max age.
+    let unused_sources =
+        research::unused_recent_research_sources(&latest_run.sources, chrono::Utc::now());
+    if unused_sources.is_empty() {
+        return Err(format!(
+            "Unused research sources are all older than {} hours (~{} days). Run new research to find hours/days-old stories.",
+            research::RESEARCH_MAX_AGE_HOURS,
+            research::RESEARCH_MAX_AGE_HOURS / 24
+        ));
     }
 
     let available = unused_sources.len() as u32;
@@ -1033,8 +1076,9 @@ pub async fn generate_drafts_from_latest_research(
         .unwrap_or_default();
 
     log::info!(
-        "generate_drafts_from_latest_research: {} unused sources, count={}, style={}",
+        "generate_drafts_from_latest_research: {} unused recent sources ({} unused total), count={}, style={}",
         unused_sources.len(),
+        unused_all.len(),
         count,
         draft_style.as_str()
     );
