@@ -3,7 +3,7 @@
 > **Living document.** This file captures architecture decisions, design discussions, tradeoffs, and the current task breakdown.
 > Update it after any significant conversation or when priorities shift.
 >
-> Last updated: 2026-06-22 (Follow-on generation quality: make drafts more human-like/interesting/engaging for viral potential on X. Final restructure per strategist rec 68e0583f559e to make frozen approach/checklist + AC2 literally true on disk without retrofits: reverted to &'static str returns using concat! (literals) inside the *_style_rules fns for the human GOOD/BAD examples (one source consts for test/SAMPLE); moved full numbered HUMAN VOICE subsection into insight_style_rules() after ANTI-PHRASING (renumbering STRUCTURE to 4) + short mirrors in sibling r# blocks; removed duplicate from shared; simplified build arms (siblings return style_rules() value; insight prepends it then legacy goods only). 2 files changed (PLAN.md + generation.rs). Honest: previous String/format! in style fns and heavy build changes + direct style contains theater were rolled back via the concat + placement steps to match plan text. Tests drive consts + build_* + prompt contains. No claim of 'no deviations' or 'static strings only' — documented plainly. All verif steps passed on final artifacts. Layered on facts rule.)
+> Last updated: 2026-07-13 (Engagement + views bar: shared ENGAGEMENT_AND_VIEWS_RULES on every style path; role/user-prompt views language; tests loop all styles; dump via GENERATION_DUMP_DIR. Layered on prior human-voice/viral + facts dual bar — facts never relaxed for virality.)
 
 ---
 
@@ -286,6 +286,31 @@ Add new questions here as they come up. Resolve and move to Design Decisions whe
 This section captures key discussions from conversations so future sessions can pick up context quickly.
 
 **Format:** Add new entries at the **top**.
+
+---
+
+### 2026-07-13 — Engagement + views: optimize generated X drafts for high engagement and views
+
+**Objective:** Make generated X posts highly engaging and optimized for views (scroll-stopping hooks, human conversational voice, quotable/share-worthy lines) while keeping the mandatory specific-facts-from-sources / dual information+insight bar.
+
+**What changed vs prior human-voice/viral work (2026-06-22):**
+- Prior work already had Insight "HUMAN VOICE + ENGAGEMENT FOR VIRAL POTENTIAL", sibling short mirrors, GOOD/BAD exemplars ≤280 chars, dual-bar facts.
+- This pass hardens **views** language on **every style path**:
+  - New shared `ENGAGEMENT_AND_VIEWS_RULES` const composed into both branches of `shared_generation_rules` (all styles + user-provided).
+  - Role lines: high-engagement X posts optimized for views and engagement.
+  - Sibling style mirrors: "engagement for views" + scroll-stopping / share-worthy wording.
+  - User prompt: mandatory `ENGAGEMENT + VIEWS` requirement via real `build_generation_user_prompt`.
+  - Insight section 3 reinforced with "earn views in the feed" / "more views".
+  - Explicit guard: "Facts are never relaxed for virality."
+- Tests: all-styles loop on system prompts; new `test_all_styles_system_and_user_prompts_require_engagement_and_views`; optional dump when `GENERATION_DUMP_DIR` is set (writes full system prompt + sample engaging draft from shipped const via real builders).
+- Files: `src-tauri/src/generation.rs`, `PLAN.md`.
+
+**Verification:**
+- `cargo test generation -- --nocapture` → 29 passed.
+- `GENERATION_DUMP_DIR=… cargo test test_system_prompt_requires_insight_and_stock_tags` dumps Insight + Informative system prompts + `sample_engaging_draft.txt` (HUMAN_VOICE_GOOD_INSIGHT, 280 chars, named facts).
+- Live Grok draft: skipped (no API key in env) — non-blocking per plan.
+
+**Non-claims:** Does not guarantee production impression counts; LLM output remains non-deterministic; success is improved *potential* via instructions + exemplars.
 
 ---
 

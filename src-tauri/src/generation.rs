@@ -11,10 +11,11 @@ use std::path::Path;
 use std::time::Duration;
 
 // Lifted exemplars to consts per strategy: one source of truth, <280 chars, include required facts (77%, 2013, SaveRGV/Sierra/Carrizo, Huddle, w/ prejudice, ~450hrs).
-// Target ~240-279 chars: scene-setting + encompassing context + outcome, not telegram shorthand.
-const BOCA_CHICA_FACT_CORE: &str = "2009: 77% amended TX constitution for permanent public beach easement. 2013 carved Boca Chica launch closures. SaveRGV + Sierra + Carrizo sued. Sup Ct unanimous (Huddle): no private right to sue. Dismissed w/ prejudice - ends ~450hrs/yr legal blocks delaying Starship tests. $SPCX";
+// Target ~240-279 chars: scene-setting + named facts + concrete impact + non-obvious takeaway (dual information+insight bar).
+const BOCA_CHICA_FACT_CORE: &str = "2009: 77% amended TX constitution for permanent public beach easement. 2013 carved Boca Chica launch closures. SaveRGV + Sierra + Carrizo sued. Sup Ct (Huddle): no private right to sue; dismissed w/ prejudice. Ends ~450hrs/yr pad blocks - Starship free of beach-suit lag. $SPCX";
 
-const HUMAN_VOICE_GOOD_INSIGHT: &str = "Wait - 2009: 77% locked public beach access into TX constitution. 2013 carved Boca Chica launch closures for SpaceX. SaveRGV + Sierra + Carrizo sued. Sup Ct unanimous (Huddle): no private right to sue. Dismissed w/ prejudice - ~450hrs/yr legal blocks on Starship pads over. $SPCX";
+// Insight GOOD: same fact pack plus a second-order read-through (cadence free of private beach-suit risk) - not just a fact dump.
+const HUMAN_VOICE_GOOD_INSIGHT: &str = "Wait - 2009: 77% locked public beach access into TX constitution. 2013 carved Boca Chica launch closures. SaveRGV + Sierra + Carrizo sued. Sup Ct (Huddle): no private right to sue; dismissed w/ prejudice. ~450hrs/yr pad blocks over - cadence free of private beach-suit risk. $SPCX";
 
 // One source of truth for the core legal fact string used in insight GOOD example (reuses core to avoid dead_code and keep facts identical).
 const INSIGHT_LEGAL_GOOD: &str = BOCA_CHICA_FACT_CORE;
@@ -23,11 +24,47 @@ const INSIGHT_MOODYS_GOOD: &str = "Tesla holds ~$40B cash, zero debt, steady pro
 
 const HUMAN_VOICE_GOOD_INFORMATIVE: &str = BOCA_CHICA_FACT_CORE;
 
-const HUMAN_VOICE_GOOD_FUNNY: &str = "2009: 77% said beaches belong to everyone - then 2013 gave rockets dibs on Boca Chica. SaveRGV + Sierra + Carrizo sued anyway. Sup Ct unanimous (Huddle): constitution has no 'sue' button. Dismissed w/ prejudice. ~450hrs/yr of launch drama? Gone. Starship pad breathes again. $SPCX";
+const HUMAN_VOICE_GOOD_FUNNY: &str = "2009: 77% said beaches belong to everyone - then 2013 gave rockets dibs on Boca Chica. SaveRGV + Sierra + Carrizo sued anyway. Sup Ct (Huddle): constitution has no 'sue' button. Dismissed w/ prejudice. ~450hrs/yr of launch drama? Gone. Starship pad breathes again. $SPCX";
 
-const HUMAN_VOICE_GOOD_WITTY: &str = "2009: beaches ours (77% vote, constitution). 2013: 'except Boca Chica, rockets need it.' Lawsuit? Sup Ct unanimous (Huddle): no private right to sue. Dismissed w/ prejudice - ~450hrs/yr of legal stand-down theater over. Starship gets the beach and the last laugh. $SPCX";
+const HUMAN_VOICE_GOOD_WITTY: &str = "2009: beaches ours (77% vote, constitution). 2013: 'except Boca Chica, rockets need it.' Lawsuit? Sup Ct (Huddle): no private right to sue. Dismissed w/ prejudice - ~450hrs/yr of legal stand-down theater over. Starship gets the beach and the last laugh. $SPCX";
 
-const HUMAN_VOICE_GOOD_MEME: &str = "POV: 2009 - 77% vote permanent public beach access into TX law. 2013 - SpaceX borrows Boca Chica for launches. SaveRGV sues. Sup Ct unanimous (Huddle): no sue button in the amendment. Dismissed w/ prejudice. ~450hrs/yr of pad drama? Poof. Starship back. $SPCX";
+const HUMAN_VOICE_GOOD_MEME: &str = "POV: 2009 - 77% vote permanent public beach access into TX law. 2013 - SpaceX borrows Boca Chica for launches. SaveRGV sues. Sup Ct (Huddle): no sue button in the amendment. Dismissed w/ prejudice. ~450hrs/yr of pad drama? Poof. Starship back. $SPCX";
+
+/// Content shorter than this (char count) is treated as thin and gets article-body enrichment
+/// and/or related-story grouping before being sent to Grok.
+pub const THIN_SOURCE_CONTENT_LEN: usize = 550;
+
+/// Title signals that mark major factual/legal/regulatory stories needing extra concrete material.
+pub const MAJOR_STORY_TITLE_SIGNALS: &[&str] = &[
+    "supreme court",
+    "court ruling",
+    "amendment",
+    "litigation",
+    "beach access",
+    "boca chica",
+    "delay",
+    "injunction",
+    "sue",
+    "block",
+    "approval",
+    "regulatory",
+];
+
+/// Label prepended when article body is appended for concrete named facts (primary sources).
+pub const ARTICLE_BODY_ENRICHMENT_LABEL: &str = " [Additional article body from source URL — use for concrete names, numbers, amendment text, holding details, quantified impacts, etc.: ";
+
+/// Label when enriching a related/similar story's body.
+pub const RELATED_ARTICLE_BODY_LABEL: &str = " [Additional article body — use for more facts: ";
+
+/// Whether a source is too thin or is a major factual story that needs enrichment/grouping.
+pub fn source_needs_generation_enrichment(source: &ResearchSource) -> bool {
+    let content_len = source.content.chars().count();
+    let title_lower = source.title.to_lowercase();
+    content_len < THIN_SOURCE_CONTENT_LEN
+        || MAJOR_STORY_TITLE_SIGNALS
+            .iter()
+            .any(|sig| title_lower.contains(sig))
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GeneratedDraftItem {
@@ -109,9 +146,20 @@ const LENGTH_AND_CONTEXT_RULES: &str = r#"- LENGTH + ENCOMPASSING CONTEXT (MANDA
   - Use the full single-tweet budget: aim for 220-279 characters when the story has enough facts. Longer, scene-setting posts that walk a zero-context reader through the situation outperform ultra-compressed shorthand.
   - Do NOT write telegram-style fragments, cryptic abbreviations, or bare headline rewrites. Every post must read as a complete mini-story: (1) brief background or prior situation, (2) what happened now, (3) concrete operational/strategic impact, (4) fresh insight or takeaway (insight style) or clear why-it-matters (informative style).
   - A reader who has never seen the source, the link, or prior coverage must still understand the full arc — who/what/when, what changed, and why it matters — without googling.
-  - Include 3-5 specific, named facts from the sources (years, parties, numbers, holdings, program names) woven into flowing sentences — not a single vague summary line.
+  - Include 3-5 specific named facts from the sources (years, parties, numbers, holdings, program names) woven into flowing sentences — not a single vague summary line.
+  - DUAL BAR (MANDATORY — information density AND insight together): Maximize both in the same post. Never ship a pure fact-dump with no non-obvious takeaway, and never ship a hot take or implication with thin or vague source grounding. When facts allow, use 220-279 chars to pack named details *and* a useful read-through.
   - BAD (too short, no context): "Court ends Boca Chica lawsuit. Starship can launch faster now. $SPCX" (assumes reader knows the backstory; no amendment, no litigants, no quantified prior impact)
-  - BAD (too compressed): "2009 amend. 2013 law. Sued. No right. Prejudice. 450hrs. $SPCX" (telegram shorthand, not informative)"#;
+  - BAD (too compressed): "2009 amend. 2013 law. Sued. No right. Prejudice. 450hrs. $SPCX" (telegram shorthand, not informative)
+  - BAD (fact-dump, no insight): lists every named party and year but ends with no implication, second-order effect, or "so what" beyond restating the outcome
+  - BAD (insight-only, thin facts): a clever read-through or prediction with only one vague fact or a headline paraphrase — fails the specific-facts-from-sources rule"#;
+
+/// View/engagement guidance shared by every style path (system prompt). Facts/dual bar stay mandatory.
+const ENGAGEMENT_AND_VIEWS_RULES: &str = r#"- ENGAGEMENT + VIEWS (MANDATORY — every style):
+  - Optimize every draft for high engagement and views on X: a scroll-stopping first-line hook, human conversational voice, and at least one quotable/share-worthy line people want to screenshot, quote-tweet, or reply to.
+  - First line = the hook. Lead with a surprising fact, bold claim, intriguing question, vivid scene, or "wait, what?" moment that stops the scroll. Never open with dry wire-copy ("The company announced...", "According to a report...", "A court ruled that...").
+  - Sound human, not AI: conversational prose full of contractions (it's, don't, we're), natural rhythm, short punchy sentences mixed with longer ones — like an enthusiast geeking out with friends, not a press release or LinkedIn post.
+  - Build share-worthiness into the body: emotional resonance, storytelling flow, or a non-obvious implication that makes people think "exactly" or "whoa" and want to amplify it.
+  - Facts are never relaxed for virality: still obey EVERY POST MUST BE BACKED BY SPECIFIC FACTS FROM THE SOURCES and DUAL BAR. Never fabricate claims or ship pure engagement bait without named source details."#;
 
 fn shared_generation_rules(user_provided: bool) -> String {
     if user_provided {
@@ -135,8 +183,10 @@ fn shared_generation_rules(user_provided: bool) -> String {
   - Never use parenthetical handles like (SawyerMerritt).
 - Avoid repeating themes from the user's RECENT POSTS list below.
 - Each post must be under 280 characters (single tweet). Count cashtags toward the limit.
+{}
 {}"#,
-        LENGTH_AND_CONTEXT_RULES
+        LENGTH_AND_CONTEXT_RULES,
+        ENGAGEMENT_AND_VIEWS_RULES
         )
     } else {
         format!(
@@ -159,8 +209,10 @@ fn shared_generation_rules(user_provided: bool) -> String {
 - Avoid repeating themes from the user's RECENT POSTS list below.
 - Prefer Musk company/tech angles. If a source is political, still write the post about that source rather than refusing.
 - Each post must be under 280 characters (single tweet). Count cashtags toward the limit.
+{}
 {}"#,
-        LENGTH_AND_CONTEXT_RULES
+        LENGTH_AND_CONTEXT_RULES,
+        ENGAGEMENT_AND_VIEWS_RULES
         )
     }
 }
@@ -168,32 +220,36 @@ fn shared_generation_rules(user_provided: bool) -> String {
 fn insight_style_rules() -> String {
     format!(
         r#"STYLE: INSIGHT (default)
-1. USEFUL INSIGHT REQUIRED — NOT REGURGITATION:
+1. USEFUL INSIGHT REQUIRED — NOT REGURGITATION (paired with max information density):
    - Every post must add value beyond the source headline: implications, second-order effects, what bulls/bears miss, competitive context, timeline read-through, margin/capital angle, or strategic significance.
+   - Every post must also pack 3-5 specific named facts from the sources (see SHARED RULES + DUAL BAR). Insight without named facts is a hot take; facts without a non-obvious takeaway are a news dump. Deliver BOTH.
    - Do NOT restate, summarize, or closely paraphrase the source.
    - Do NOT write empty hype or press-release filler.
    - Transform the facts into a novel observation or prediction that feels like it comes from someone who has followed the story for months — specific, non-generic, worth screenshotting or quoting in replies.
+   - The final clause or sentence should land a fresh implication (e.g. cadence free of private beach-suit risk, balance-sheet headroom underweighted by a rating) — not stop at "the court ruled X" or "this is good news."
 
 2. ANTI-PHRASING RULE:
    - Never reuse verbs, sentence structures, or headline phrasing directly from the source or title. Re-express the core implication in fresh language.
 
-3. HUMAN VOICE + ENGAGEMENT FOR VIRAL POTENTIAL (applies to all styles):
+3. HUMAN VOICE + ENGAGEMENT FOR VIRAL POTENTIAL (applies to all styles; reinforces ENGAGEMENT + VIEWS):
    - Sound like a real human enthusiast or insider tweeting to fellow fans, not an AI news summarizer or press release. Use conversational prose full of contractions (it's, don't, we're, that's), natural rhythm, short punchy sentences mixed with longer ones, and a tone that's excited, wry, or in awe — like you're geeking out in the replies.
-   - Strong first-line hook required on every post: Lead with a surprising fact, bold claim, intriguing question, vivid scene, or "wait, what?" moment that stops the scroll and makes people read the rest.
+   - Strong first-line hook required on every post: Lead with a surprising fact, bold claim, intriguing question, vivid scene, or "wait, what?" moment that stops the scroll and makes people read the rest — this is how posts earn views in the feed.
    - Drive engagement and quotability: Build in lines that feel screenshot-worthy or reply-baiting — subtle emotional resonance (the relief of a bureaucracy lifted, the "this is why it matters for the future" spark), storytelling flow that carries the reader, or implications that make followers think "exactly" or "whoa, never thought of it that way" and want to quote or tag someone.
    - Weave the key concrete facts from the sources (e.g. the 2009 Open Beaches Amendment with its 77% voter approval and permanent public easement guarantee, the 2013 law creating the space-flight exception, the litigants SaveRGV joined by Sierra Club and Carrizo/Comecrudo Nation, Justice Huddle's unanimous opinion that the amendment creates no private right to sue, "dismissed with prejudice", the ~450 hours per year of closures that actually forced repeated pad stands-downs and test delays) into flowing narrative sentences. Never fall into summary voice, bullet lists, or "the court ruled that..." dryness.
-   - The whole point: higher viral potential. Posts that feel alive, human, worth amplifying and arguing about — while 100% obeying the "EVERY POST MUST BE BACKED BY SPECIFIC FACTS" rule above and never fabricating.
+   - The whole point: higher viral potential and more views. Posts that feel alive, human, worth amplifying and arguing about — while 100% obeying the "EVERY POST MUST BE BACKED BY SPECIFIC FACTS" rule above and never fabricating.
 
 4. STRUCTURE FOR STANDALONE INSIGHT POSTS (not replies):
    - Write as a self-contained mini-story or analysis with an encompassing arc: background → what happened → concrete impact → fresh insight. A reader who has never seen the source or the news must still understand the full situation without prior context.
    - Open with scene-setting: the prior law/policy/situation and key facts from the source (specific numbers, parties, what the external event/rating actually was).
-   - Deliver the fresh insight/implication in the second half — never sacrifice context for a punchy one-liner.
+   - Deliver the fresh insight/implication in the second half — never sacrifice context for a punchy one-liner, and never omit the insight to fit more facts.
    - Aim for 220-279 characters: use the full tweet budget to include enough facts and context; do not default to ultra-short hot takes.
    - Optionally weave in 1 short supporting fact from general knowledge (historical context, scale of the programs, etc.) that makes the "why this matters" clearer.
    - Use attribution only for non-general, source-specific claims.
 
-GOOD (human voice, hooky, conversational, quotable, facts woven naturally — encompassing context version of the Boca Chica resolution, pulling concrete details from primary + related coverage): {insight_good}
-BAD (stilted/AI-like or flat non-engaging, even with facts): "The Texas Supreme Court issued a unanimous ruling written by Justice Rebeca Huddle determining that the 2009 Open Beaches Amendment to the Texas Constitution does not create a private right of action for enforcement of beach access rights against the 2013 space flight activities authorization, resulting in dismissal with prejudice of the litigation brought by SaveRGV and joined by the Sierra Club and Carrizo/Comecrudo Nation of Texas." (dry, list-y, zero hook, zero flow, zero quotable human spark — the exact voice to avoid for engagement/virality)"#,
+GOOD (human voice, hooky, dual bar — named facts + non-obvious takeaway from primary + related coverage): {insight_good}
+BAD (stilted/AI-like or flat non-engaging, even with facts): "The Texas Supreme Court issued a unanimous ruling written by Justice Rebeca Huddle determining that the 2009 Open Beaches Amendment to the Texas Constitution does not create a private right of action for enforcement of beach access rights against the 2013 space flight activities authorization, resulting in dismissal with prejudice of the litigation brought by SaveRGV and joined by the Sierra Club and Carrizo/Comecrudo Nation of Texas." (dry, list-y, zero hook, zero flow, zero quotable human spark — the exact voice to avoid for engagement/virality)
+BAD (fact-dump without insight): "2009: 77% beach amendment. 2013 Boca Chica closures. SaveRGV + Sierra + Carrizo sued. Sup Ct (Huddle): no private right to sue. Dismissed w/ prejudice. ~450hrs/yr pad blocks ended. $SPCX" (all facts, no second-order read-through)
+BAD (insight without facts): "Private beach suits no longer hold Starship cadence hostage — huge for launch economics. $SPCX" (clever take, zero named source details)"#,
         insight_good = HUMAN_VOICE_GOOD_INSIGHT,
     )
 }
@@ -203,15 +259,17 @@ fn informative_style_rules() -> String {
         r#"STYLE: INFORMATIVE
 - Share the news clearly and informatively — walk the reader through what happened, the relevant background, and why it matters in plain terms. No analyst cosplay, but do not skimp on context.
 - Lead with scene-setting (prior situation or background from the source), then the development, then the concrete impact. Aim for 220-279 characters when facts allow.
+- Still obey DUAL BAR substance: pack 3-5 specific named facts from the sources and end with a clear why-it-matters (not a vague "this is significant"). Fact-backed substance is mandatory even without deep market read-through.
 - Neutral-to-positive tone: informative and useful, not hypey and not bearish.
 - Do NOT force deep market read-through or second-order effects — clarity beats cleverness, but clarity requires enough context for a zero-prior-knowledge reader.
 
-GOOD (RSS): "Per source: Teslarati, Tesla expanded Austin Robotaxi coverage again — another step toward wider unsupervised FSD testing in a live city $TSLA"
-GOOD (X): "As @SawyerMerritt reported, Starship completed another successful booster catch — key milestone for faster reuse and launch cadence $SPCX"
+GOOD (RSS): "Per source: Teslarati, Tesla widened Austin Robotaxi geofence again — more unsupervised FSD miles in a live city, another concrete step toward broader unsupervised testing $TSLA"
+GOOD (X): "As @SawyerMerritt reported, Starship completed another successful booster catch — the concrete reuse milestone that shortens turnaround toward higher launch cadence $SPCX"
 BAD: "Robotaxi expansion changes the regulatory confidence calculus for margin mix read-through." (too analyst-heavy for informative mode)
-- Apply human voice + engagement for viral potential: strong first-line hooks (surprising fact, bold claim or question), conversational prose full of contractions and natural rhythm, quotable or reply-baiting lines, weave facts into flowing narrative.
-GOOD (human voice, informative style — scene-setting, conversational, facts woven, <280): {informative_good}
-BAD (informative but flat/AI): "The court determined that the constitutional amendment does not provide a private right of action, leading to dismissal of the beach access litigation." (no hook, no voice, no flow)"#,
+BAD (thin facts): "Tesla expanded Robotaxi in Austin again. $TSLA" (headline only; no named details or why-it-matters)
+- Apply human voice + engagement for views: scroll-stopping first-line hooks (surprising fact, bold claim or question), conversational prose full of contractions and natural rhythm, quotable/share-worthy or reply-baiting lines, weave facts into flowing narrative. Optimize for high engagement and views without dropping the fact bar.
+GOOD (human voice, informative style — scene-setting, conversational, multi-fact, <280): {informative_good}
+BAD (informative but flat/AI): "The court determined that the constitutional amendment does not provide a private right of action, leading to dismissal of the beach access litigation." (no hook, no voice, no flow, thin facts — zero engagement potential)"#,
         informative_good = HUMAN_VOICE_GOOD_INFORMATIVE,
     )
 }
@@ -226,9 +284,9 @@ fn funny_style_rules() -> String {
 
 GOOD: "Per source: Teslarati, Tesla widened Austin Robotaxi again — my wallet is ready to be a backseat driver with zero driving skills $TSLA"
 BAD: "lol tesla go brr" (no source anchor or substance)
-- Apply human voice + engagement for viral potential: strong first-line hooks, conversational prose with contractions, quotable punchlines and playful narrative weave of facts.
+- Apply human voice + engagement for views: scroll-stopping first-line hooks, conversational prose with contractions, quotable/share-worthy punchlines and playful narrative weave of facts. Optimize for high engagement and views without dropping the fact bar.
 GOOD (human voice, funny style — playful, quotable, facts in joke, <280): {funny_good}
-BAD (funny but not human/grounded): "Haha SpaceX wins beach lawsuit, very funny." (no facts, no hook, no real joke)"#,
+BAD (funny but not human/grounded): "Haha SpaceX wins beach lawsuit, very funny." (no facts, no hook, no real joke — zero share potential)"#,
         funny_good = HUMAN_VOICE_GOOD_FUNNY,
     )
 }
@@ -243,9 +301,9 @@ fn witty_style_rules() -> String {
 
 GOOD: "As @SawyerMerritt flagged, another Austin Robotaxi expansion — FSD collecting city miles faster than most people collect airline points $TSLA"
 BAD: "Robotaxi is expanding which is interesting for the company." (flat, no wit)
-- Apply human voice + engagement for viral potential: strong first-line hooks, conversational prose, sharp quotable one-liners and witty narrative with facts.
+- Apply human voice + engagement for views: scroll-stopping first-line hooks, conversational prose, sharp quotable/share-worthy one-liners and witty narrative with facts. Optimize for high engagement and views without dropping the fact bar.
 GOOD (human voice, witty style — sharp, quotable one-liner with facts, <280): {witty_good}
-BAD (witty but lifeless): "The ruling clarifies that no private enforcement mechanism exists under the amendment." (clever? no. human? no.)"#,
+BAD (witty but lifeless): "The ruling clarifies that no private enforcement mechanism exists under the amendment." (clever? no. human? no. — will not earn views)"#,
         witty_good = HUMAN_VOICE_GOOD_WITTY,
     )
 }
@@ -261,9 +319,9 @@ fn meme_style_rules() -> String {
 GOOD: "POV: source: Teslarati says Austin Robotaxi expanded again and you're already mentally filing your robotaxi commute $TSLA"
 GOOD: "Nobody: ... Me: refreshing Robotaxi maps like it's a limited drop @SawyerMerritt"
 BAD: "Starship had a successful test." (reads like news, not a meme)
-- Apply human voice + engagement for viral potential: strong first-line hooks, conversational prose, punchy meme energy with quotable hooks and facts in narrative.
+- Apply human voice + engagement for views: scroll-stopping first-line hooks, conversational prose, punchy meme energy with quotable/share-worthy hooks and facts in narrative. Optimize for high engagement and views without dropping the fact bar.
 GOOD (human voice, meme style — punchy viral meme with facts, <280): {meme_good}
-BAD (meme but not human/viral): "Court rules on beach access for launches." (boring text, no meme energy, no facts, no share)"#,
+BAD (meme but not human/viral): "Court rules on beach access for launches." (boring text, no meme energy, no facts, no share — zero views potential)"#,
         meme_good = HUMAN_VOICE_GOOD_MEME,
     )
 }
@@ -288,9 +346,9 @@ pub fn build_generation_system_prompt(style: DraftStyle, sources: &[ResearchSour
     };
 
     let role = if user_provided {
-        "You are an expert social media writer creating posts from links and topics the user explicitly requested. Your posts must be directly based on and faithful to the specific content, story, claims, or idea the user pasted. Do not generate a post about a different or only loosely related topic."
+        "You are an expert social media writer creating high-engagement X posts from links and topics the user explicitly requested. Optimize for views and engagement (scroll-stopping hooks, human voice, quotable lines) while staying faithful to the specific content, story, claims, or idea the user pasted. Do not generate a post about a different or only loosely related topic."
     } else {
-        "You are an expert social media writer creating posts for a human who covers Elon Musk's companies (Tesla, SpaceX, xAI, Neuralink, Boring Company)."
+        "You are an expert social media writer creating high-engagement X posts for a human who covers Elon Musk's companies (Tesla, SpaceX, xAI, Neuralink, Boring Company). Every draft should be optimized for views and engagement on X (scroll-stopping first line, conversational human voice, share-worthy lines) while staying fully fact-backed."
     };
 
     let full_style_rules = match style {
@@ -304,8 +362,10 @@ pub fn build_generation_system_prompt(style: DraftStyle, sources: &[ResearchSour
              BAD (shallow): \"Robotaxi expansion is interesting for the company and its stock.\" (no specific implication or re-expression)\n\
              BAD (over-attribution + no context): \"As @SawyerMerritt noted, FSD is Tesla's Full Self-Driving system.\" (attributes common knowledge; also fails to set any scene)\n\
              BAD (reply-like, assumes reader knows the external event): \"Tesla's $40B cash, zero debt, and steady profits create headroom to self-fund Optimus and robotaxi ramps without dilution, a structural advantage Moody's rating overlooks. $TSLA\" (no explanation of what Moody's actually did or said; no grounding details; feels like a direct comment on the news + article)\n\n\
-             GOOD (legal/regulatory story drawing concrete facts from primary article + related/similar coverage — the motivating case for \"every post needs facts\" + grouping when single source is thin): {}\n\
-             BAD (vague, no backing facts, exactly the style to avoid): \"Texas Supreme Court unanimously ended years of litigation, ruling the 2009 amendment creates no private right to sue over Boca Chica beach access. The decision removes recurring legal blocks that had forced repeated delays to Starship pad operations.\" (no amendment text, no 2013 law, no plaintiffs, no 450 hrs, no 'with prejudice', no specific prior impact — fails the 'facts to back up the post' rule)\n\n",
+             GOOD (legal/regulatory story drawing concrete facts from primary article + related/similar coverage — dual bar: named facts + operational takeaway): {}\n\
+             BAD (vague, no backing facts, exactly the style to avoid): \"Texas Supreme Court unanimously ended years of litigation, ruling the 2009 amendment creates no private right to sue over Boca Chica beach access. The decision removes recurring legal blocks that had forced repeated delays to Starship pad operations.\" (no amendment text, no 2013 law, no plaintiffs, no 450 hrs, no 'with prejudice', no specific prior impact — fails the 'facts to back up the post' rule)\n\
+             BAD (fact-dump without useful insight): packs years/parties/holding but ends with no non-obvious implication beyond restating the dismissal\n\
+             BAD (insight without named facts): a clever cadence/economics take with only a headline paraphrase — fails DUAL BAR\n\n",
             style_rules, INSIGHT_MOODYS_GOOD, INSIGHT_LEGAL_GOOD
         ),
         DraftStyle::Informative => informative_style_rules(),
@@ -419,14 +479,16 @@ pub fn build_generation_user_prompt(
         "- Frame constructively and bullishly toward Elon and his companies while staying factual."
     };
 
-    let length_requirement = "- LENGTH + CONTEXT: Aim for 220-279 characters. Include background, what happened, and why it matters so a reader with zero prior context understands the full story. Do not write ultra-compressed shorthand or bare headline rewrites.";
+    let length_requirement = "- LENGTH + CONTEXT + DUAL BAR: Aim for 220-279 characters. Include 3-5 specific named facts from the sources plus background, what happened, and why it matters so a zero-context reader gets the full story. Maximize information density AND a useful takeaway in the same post — no pure fact-dumps and no insight-only hot takes. Do not write ultra-compressed shorthand or bare headline rewrites.";
+
+    let engagement_requirement = "- ENGAGEMENT + VIEWS: Open with a scroll-stopping first-line hook; write in human conversational voice (contractions, natural rhythm); include at least one quotable/share-worthy line. Optimize for high engagement and views on X without relaxing the specific-facts or dual-bar rules.";
 
     let style_requirement = match style {
         DraftStyle::Insight => {
-            "- Add genuine insight (implications, read-through, what the market or observers miss) — never just repeat the source. Transform facts into a non-obvious but grounded observation; re-express in fresh language (see style rules for anti-phrasing and the 'STRUCTURE FOR STANDALONE INSIGHT POSTS' section — encompassing arc with scene-setting for any external event/rating, specific facts/numbers from the source, and optional 1 supporting general-knowledge point)."
+            "- DUAL BAR: Pack 3-5 specific named facts from the sources AND add genuine insight (implications, read-through, what the market or observers miss) — never just repeat or paraphrase the source. Transform those facts into a non-obvious but grounded observation; re-express in fresh language (see style rules for anti-phrasing and the 'STRUCTURE FOR STANDALONE INSIGHT POSTS' section — encompassing arc with scene-setting for any external event/rating, specific facts/numbers from the source, and optional 1 supporting general-knowledge point)."
         }
         DraftStyle::Informative => {
-            "- Make each post clear, factual, and useful — explain background, what happened, and concrete impact without heavy analysis."
+            "- Make each post clear, factual, and useful — pack multiple specific named facts, explain background, what happened, and concrete why-it-matters without heavy analysis or vague summary language."
         }
         DraftStyle::Funny => {
             "- Make each post genuinely funny while staying anchored to the source story."
@@ -446,6 +508,7 @@ pub fn build_generation_user_prompt(
          {}\n\
          {}\n\
          {}\n\
+         {}\n\
          - Include at most one cashtag ($TSLA or $SPCX) when stock-relevant.\n\
          - If the Sources list below contains Related/similar coverage items (after the main research sources), use them only for additional concrete facts and details. primary_source_index must still refer to one of the main sources (the first N items).\n\n\
          ## Sources\n{}\n\n\
@@ -454,6 +517,7 @@ pub fn build_generation_user_prompt(
         style.as_str(),
         style_requirement,
         length_requirement,
+        engagement_requirement,
         framing_requirement,
         attribution_requirement,
         source_lines.join("\n"),
@@ -725,25 +789,16 @@ pub async fn prepare_sources_for_generation(original: &[ResearchSource]) -> Vec<
 
     let mut effective: Vec<ResearchSource> = original.to_vec();
 
-    // Threshold and signals for "this source is probably too thin on its own or is a
-    // major factual/legal story that benefits from related coverage".
-    let thin_len = 550usize;
-    let major_signals = [
-        "supreme court", "court ruling", "amendment", "litigation", "beach access",
-        "boca chica", "delay", "injunction", "sue", "block", "approval", "regulatory",
-    ];
-
     for s in &mut effective {
-        let content_len = s.content.chars().count();
-        let title_lower = s.title.to_lowercase();
-        let needs_more = content_len < thin_len
-            || major_signals.iter().any(|sig| title_lower.contains(sig));
-
-        if needs_more && !s.url.is_empty() {
+        if source_needs_generation_enrichment(s) && !s.url.is_empty() {
             if let Some(rich) = crate::draft_image::fetch_and_extract_article_text(&s.url).await {
                 if !rich.trim().is_empty() {
-                    let label = " [Additional article body from source URL — use for concrete names, numbers, amendment text, holding details, quantified impacts, etc.: ";
-                    s.content = format!("{}{}{}]", s.content.trim_end(), label, rich.trim());
+                    s.content = format!(
+                        "{}{}{}]",
+                        s.content.trim_end(),
+                        ARTICLE_BODY_ENRICHMENT_LABEL,
+                        rich.trim()
+                    );
                 }
             }
         }
@@ -753,28 +808,32 @@ pub async fn prepare_sources_for_generation(original: &[ResearchSource]) -> Vec<
     // similar stories (enriched if possible). This gives Grok a small cluster instead of
     // a single thin post.
     let mut appended = Vec::new();
-    for (_i, orig) in original.iter().enumerate() {
-        let content_len = orig.content.chars().count();
-        let title_lower = orig.title.to_lowercase();
-        let needs_group = content_len < thin_len
-            || major_signals.iter().any(|sig| title_lower.contains(sig));
-
-        if needs_group {
+    for orig in original.iter() {
+        if source_needs_generation_enrichment(orig) {
             let similars = find_similar_sources(orig, original, 2);
             for sim in similars {
                 // enrich the similar too if thin
                 let mut sim = sim;
-                if sim.content.chars().count() < thin_len && !sim.url.is_empty() {
-                    if let Some(rich) = crate::draft_image::fetch_and_extract_article_text(&sim.url).await {
+                if sim.content.chars().count() < THIN_SOURCE_CONTENT_LEN && !sim.url.is_empty() {
+                    if let Some(rich) =
+                        crate::draft_image::fetch_and_extract_article_text(&sim.url).await
+                    {
                         if !rich.trim().is_empty() {
-                            let label = " [Additional article body — use for more facts: ";
-                            sim.content = format!("{}{}{}]", sim.content.trim_end(), label, rich.trim());
+                            sim.content = format!(
+                                "{}{}{}]",
+                                sim.content.trim_end(),
+                                RELATED_ARTICLE_BODY_LABEL,
+                                rich.trim()
+                            );
                         }
                     }
                 }
                 // Avoid exact dups (by url or id)
-                if !effective.iter().any(|e| e.url == sim.url || (!e.id.is_empty() && e.id == sim.id)) &&
-                   !appended.iter().any(|a: &ResearchSource| a.url == sim.url || (!a.id.is_empty() && a.id == sim.id)) {
+                if !effective.iter().any(|e| e.url == sim.url || (!e.id.is_empty() && e.id == sim.id))
+                    && !appended.iter().any(|a: &ResearchSource| {
+                        a.url == sim.url || (!a.id.is_empty() && a.id == sim.id)
+                    })
+                {
                     appended.push(sim);
                 }
             }
@@ -1064,11 +1123,17 @@ mod tests {
         assert!(prompt.contains("Do NOT use vague summary language"));
         assert!(prompt.contains("Related/similar coverage if present"));
 
-        // Verify the new fact-dense legal GOOD example (the user's motivating weak post turned into a concrete, group-sourced version) is embedded
+        // Fact-dense legal GOOD + dual-bar takeaway (named facts AND non-obvious implication)
         assert!(prompt.contains("Carrizo"));
-        assert!(prompt.contains("ends ~450hrs/yr legal blocks delaying Starship tests"));
+        assert!(prompt.contains("Starship free of beach-suit lag"));
+        assert!(prompt.contains("cadence free of private beach-suit risk"));
+        assert!(prompt.contains("DUAL BAR"));
+        assert!(prompt.contains("information density AND insight"));
+        assert!(prompt.contains("fact-dump without insight") || prompt.contains("fact-dump without useful insight"));
+        assert!(prompt.contains("insight without named facts") || prompt.contains("insight without facts"));
+        assert!(prompt.contains("3-5 specific named facts"));
 
-        // New iteration: human-like, interesting, engaging voice for viral potential (layered on facts rule).
+        // Human-like engaging voice for viral potential / views (layered on facts rule).
         // Must be present: hooks, conversational human tone, quotable/reply-sparking elements.
         assert!(prompt.contains("first-line hook required"));
         assert!(prompt.contains("conversational prose full of contractions"));
@@ -1076,12 +1141,19 @@ mod tests {
         assert!(prompt.contains("viral potential"));
         assert!(prompt.contains("geeking out in the replies"));
         assert!(prompt.contains("screenshot-worthy or reply-baiting"));
+        // Shared ENGAGEMENT + VIEWS block (every style path via shared_generation_rules)
+        assert!(prompt.contains("ENGAGEMENT + VIEWS"));
+        assert!(prompt.contains("high engagement and views"));
+        assert!(prompt.contains("scroll-stopping first-line hook"));
+        assert!(prompt.contains("quotable/share-worthy"));
+        assert!(prompt.contains("Facts are never relaxed for virality"));
+        assert!(prompt.contains("optimized for views and engagement"));
         // Length + encompassing context rules
         assert!(prompt.contains("LENGTH + ENCOMPASSING CONTEXT"));
         assert!(prompt.contains("aim for 220-279 characters"));
         assert!(prompt.contains("telegram-style fragments"));
 
-        // Distinctive from the new human-voice GOOD example (narrative, hooked version of Boca Chica facts)
+        // Distinctive from the dual-bar GOOD exemplars (facts + takeaway)
         assert!(prompt.contains("2009: 77% amended TX constitution for permanent public beach easement"));
         assert!(prompt.contains("Wait - 2009: 77% locked public beach access into TX constitution"));
         // Distinctive from the new BAD for stilted voice
@@ -1094,10 +1166,65 @@ mod tests {
         assert!(HUMAN_VOICE_GOOD_FUNNY.len() <= 280, "HUMAN_VOICE_GOOD_FUNNY too long: {}", HUMAN_VOICE_GOOD_FUNNY.len());
         assert!(HUMAN_VOICE_GOOD_WITTY.len() <= 280, "HUMAN_VOICE_GOOD_WITTY too long: {}", HUMAN_VOICE_GOOD_WITTY.len());
         assert!(HUMAN_VOICE_GOOD_MEME.len() <= 280, "HUMAN_VOICE_GOOD_MEME too long: {}", HUMAN_VOICE_GOOD_MEME.len());
+        // Dual bar in exemplars: facts present AND a non-obvious takeaway clause
+        assert!(HUMAN_VOICE_GOOD_INSIGHT.contains("77%"));
+        assert!(HUMAN_VOICE_GOOD_INSIGHT.contains("Carrizo"));
+        assert!(HUMAN_VOICE_GOOD_INSIGHT.contains("cadence free of private beach-suit risk"));
+        assert!(INSIGHT_LEGAL_GOOD.contains("77%"));
+        assert!(INSIGHT_LEGAL_GOOD.contains("Starship free of beach-suit lag"));
+        assert!(INSIGHT_MOODYS_GOOD.contains("underweights that balance-sheet headroom"));
 
-        // Drive shipped sibling human-voice GOOD examples (from consts) in their style prompts; also log CONFIRM for clean verif runs.
+        // Every style path: engagement/views guidance + fact bar + style GOOD exemplar via real builders.
+        for style in [
+            DraftStyle::Insight,
+            DraftStyle::Informative,
+            DraftStyle::Funny,
+            DraftStyle::Witty,
+            DraftStyle::Meme,
+        ] {
+            let p = build_generation_system_prompt(style, &[]);
+            assert!(
+                p.contains("ENGAGEMENT + VIEWS"),
+                "style {:?} missing shared ENGAGEMENT + VIEWS",
+                style
+            );
+            assert!(
+                p.contains("scroll-stopping first-line hook"),
+                "style {:?} missing scroll-stopping hook guidance",
+                style
+            );
+            assert!(
+                p.contains("high engagement and views"),
+                "style {:?} missing high engagement and views",
+                style
+            );
+            assert!(
+                p.contains("quotable/share-worthy"),
+                "style {:?} missing quotable/share-worthy",
+                style
+            );
+            assert!(
+                p.contains("EVERY POST MUST BE BACKED BY SPECIFIC FACTS FROM THE SOURCES"),
+                "style {:?} missing fact-backing rule",
+                style
+            );
+            assert!(
+                p.contains("DUAL BAR") || p.contains("3-5 specific named facts"),
+                "style {:?} missing dual bar / named-facts bar",
+                style
+            );
+            assert!(
+                p.contains("Facts are never relaxed for virality"),
+                "style {:?} missing facts-not-relaxed-for-virality guard",
+                style
+            );
+        }
+
         let inf_p = build_generation_system_prompt(DraftStyle::Informative, &[]);
         assert!(inf_p.contains(HUMAN_VOICE_GOOD_INFORMATIVE));
+        assert!(inf_p.contains("EVERY POST MUST BE BACKED BY SPECIFIC FACTS FROM THE SOURCES"));
+        assert!(inf_p.contains("3-5 specific named facts"));
+        assert!(inf_p.contains("DUAL BAR"));
         eprintln!("CONFIRM_INFORMATIVE_HUMAN_GOOD: present");
         let funny_p = build_generation_system_prompt(DraftStyle::Funny, &[]);
         assert!(funny_p.contains(HUMAN_VOICE_GOOD_FUNNY));
@@ -1113,6 +1240,188 @@ mod tests {
 
         // Permanent sample for verif: capture the shipped exemplar output.
         eprintln!("SAMPLE_EXEMPLAR_OUTPUT:\n{}", HUMAN_VOICE_GOOD_INSIGHT);
+
+        // Optional durable dump for goal verification: GENERATION_DUMP_DIR=/path cargo test ...
+        if let Ok(dir) = std::env::var("GENERATION_DUMP_DIR") {
+            let dir = std::path::PathBuf::from(dir);
+            let _ = std::fs::create_dir_all(&dir);
+            let insight = build_generation_system_prompt(DraftStyle::Insight, &[]);
+            let informative = build_generation_system_prompt(DraftStyle::Informative, &[]);
+            std::fs::write(dir.join("generated_system_prompt.txt"), &insight)
+                .expect("write generated_system_prompt.txt");
+            std::fs::write(
+                dir.join("generated_system_prompt_informative.txt"),
+                &informative,
+            )
+            .expect("write informative system prompt");
+            std::fs::write(dir.join("sample_engaging_draft.txt"), HUMAN_VOICE_GOOD_INSIGHT)
+                .expect("write sample_engaging_draft.txt");
+            eprintln!("DUMPED_PROMPTS_TO: {}", dir.display());
+        }
+    }
+
+    #[test]
+    fn test_all_styles_system_and_user_prompts_require_engagement_and_views() {
+        for style in [
+            DraftStyle::Insight,
+            DraftStyle::Informative,
+            DraftStyle::Funny,
+            DraftStyle::Witty,
+            DraftStyle::Meme,
+        ] {
+            let sys = build_generation_system_prompt(style, &[]);
+            assert!(sys.contains("ENGAGEMENT + VIEWS"), "{:?}", style);
+            assert!(sys.contains("scroll-stopping"), "{:?}", style);
+            assert!(sys.contains("high engagement and views"), "{:?}", style);
+            assert!(sys.contains("EVERY POST MUST BE BACKED BY SPECIFIC FACTS FROM THE SOURCES"), "{:?}", style);
+
+            let sources = vec![sample_rss(
+                "1",
+                "Boca Chica beach access ruling",
+                "Short blurb only.",
+                "https://example.com/boca",
+            )];
+            let user = build_generation_user_prompt(&sources, &[], 1, style);
+            assert!(
+                user.contains("ENGAGEMENT + VIEWS"),
+                "user prompt missing engagement for {:?}",
+                style
+            );
+            assert!(
+                user.contains("scroll-stopping first-line hook"),
+                "user prompt missing hook for {:?}",
+                style
+            );
+            assert!(
+                user.contains("quotable/share-worthy"),
+                "user prompt missing share-worthy for {:?}",
+                style
+            );
+            // Fact bar still required on user prompt
+            assert!(
+                user.contains("DUAL BAR")
+                    || user.contains("3-5 specific named facts")
+                    || user.contains("specific named facts"),
+                "user prompt missing fact bar for {:?}",
+                style
+            );
+        }
+    }
+
+    fn sample_rss(id: &str, title: &str, content: &str, url: &str) -> ResearchSource {
+        sample_rss_named(id, title, content, url, "Teslarati")
+    }
+
+    fn sample_rss_named(
+        id: &str,
+        title: &str,
+        content: &str,
+        url: &str,
+        source_name: &str,
+    ) -> ResearchSource {
+        ResearchSource {
+            id: id.into(),
+            title: title.into(),
+            content: content.into(),
+            url: url.into(),
+            published_at: None,
+            source_name: source_name.into(),
+            source_type: "rss".into(),
+            retweet_count: None,
+            like_count: None,
+            reply_count: None,
+            quote_count: None,
+            original_id: None,
+            media_url: None,
+            used_at: None,
+        }
+    }
+
+    #[test]
+    fn test_user_prompt_requires_dual_information_and_insight_bar() {
+        let sources = vec![sample_rss(
+            "1",
+            "Boca Chica beach access ruling",
+            "Short blurb only.",
+            "https://example.com/boca",
+        )];
+        let prompt =
+            build_generation_user_prompt(&sources, &[], 1, DraftStyle::Insight);
+        assert!(prompt.contains("DUAL BAR"));
+        assert!(prompt.contains("3-5 specific named facts"));
+        assert!(prompt.contains("genuine insight") || prompt.contains("non-obvious"));
+        assert!(prompt.contains("no pure fact-dumps") || prompt.contains("fact-dumps"));
+        assert!(prompt.contains("220-279 characters"));
+        assert!(prompt.contains("Key facts reported in the article"));
+        // Related/similar instruction remains for enrichment path
+        assert!(prompt.contains("Related/similar coverage"));
+        // Engagement + views on the real user-prompt builder
+        assert!(prompt.contains("ENGAGEMENT + VIEWS"));
+        assert!(prompt.contains("scroll-stopping first-line hook"));
+        assert!(prompt.contains("quotable/share-worthy"));
+    }
+
+    #[test]
+    fn test_source_needs_generation_enrichment_for_thin_and_major_stories() {
+        let thin = sample_rss("1", "Robotaxi update", "Short.", "https://example.com/a");
+        assert!(source_needs_generation_enrichment(&thin));
+
+        let long_content = "x".repeat(THIN_SOURCE_CONTENT_LEN);
+        let fat_ordinary = sample_rss(
+            "2",
+            "Robotaxi geofence expands quietly",
+            &long_content,
+            "https://example.com/b",
+        );
+        assert!(!source_needs_generation_enrichment(&fat_ordinary));
+
+        let major = sample_rss(
+            "3",
+            "Texas Supreme Court litigation over Boca Chica beach access",
+            &long_content,
+            "https://example.com/c",
+        );
+        assert!(source_needs_generation_enrichment(&major));
+        assert!(MAJOR_STORY_TITLE_SIGNALS.iter().any(|s| major.title.to_lowercase().contains(s)));
+        assert!(ARTICLE_BODY_ENRICHMENT_LABEL.contains("concrete names"));
+        assert!(RELATED_ARTICLE_BODY_LABEL.contains("more facts"));
+    }
+
+    #[test]
+    fn test_find_similar_sources_groups_related_stories() {
+        let primary = sample_rss_named(
+            "1",
+            "Texas Supreme Court ends Boca Chica beach access litigation",
+            "Headline only: court rules on beach amendment.",
+            "https://example.com/primary",
+            "Space Coast Daily",
+        );
+        let related = sample_rss_named(
+            "2",
+            "SaveRGV suit over Boca Chica launch closures dismissed",
+            "Starship pad delays and beach access amendment details.",
+            "https://example.com/related",
+            "NASASpaceflight",
+        );
+        let unrelated = sample_rss_named(
+            "3",
+            "Tesla energy storage attach rates climb",
+            "Megapack deployments and margin mix.",
+            "https://example.com/energy",
+            "Electrek",
+        );
+        let all = vec![primary.clone(), related.clone(), unrelated.clone()];
+        let similar = find_similar_sources(&primary, &all, 2);
+        assert!(
+            similar.iter().any(|s| s.id == "2"),
+            "expected related Boca Chica story, got: {:?}",
+            similar.iter().map(|s| &s.id).collect::<Vec<_>>()
+        );
+        assert!(
+            !similar.iter().any(|s| s.id == "3"),
+            "unrelated energy story should not rank as similar"
+        );
+        assert!(!similar.iter().any(|s| s.id == "1"));
     }
 
     #[test]
@@ -1140,6 +1449,9 @@ mod tests {
         assert!(prompt.contains("STYLE: INFORMATIVE"));
         assert!(prompt.contains("clearly and informatively"));
         assert!(prompt.contains("do not skimp on context"));
+        assert!(prompt.contains("3-5 specific named facts"));
+        assert!(prompt.contains("why-it-matters"));
+        assert!(prompt.contains("DUAL BAR"));
     }
 
     #[test]
@@ -1399,7 +1711,9 @@ mod tests {
         assert!(prompt.contains("exactly 2"));
         assert!(prompt.contains("$TSLA"));
         assert!(prompt.contains("insight"));
-        assert!(prompt.contains("LENGTH + CONTEXT"));
+        assert!(prompt.contains("LENGTH + CONTEXT + DUAL BAR"));
         assert!(prompt.contains("220-279 characters"));
+        assert!(prompt.contains("3-5 specific named facts"));
+        assert!(prompt.contains("genuine insight") || prompt.contains("DUAL BAR"));
     }
 }
