@@ -206,7 +206,8 @@ export default function ApiKeySettings({
           }}
           data-testid="grok-model-select"
         >
-          <option value="grok-4.3">grok-4.3 — best quality (recommended)</option>
+          <option value="grok-4.5">grok-4.5 — best quality (recommended)</option>
+          <option value="grok-4.3">grok-4.3 — capable</option>
           <option value="grok-3">grok-3 — capable</option>
           <option value="grok-3-mini">grok-3-mini — fast & economical</option>
         </select>
