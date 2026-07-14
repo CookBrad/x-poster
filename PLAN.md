@@ -3,7 +3,7 @@
 > **Living document.** This file captures architecture decisions, design discussions, tradeoffs, and the current task breakdown.
 > Update it after any significant conversation or when priorities shift.
 >
-> Last updated: 2026-07-13 (Research recency: prefer hours-old subjects, hard max 72h; filter/rank on RSS + Grok X + draft generation. Prior: engagement/views prompt bar.)
+> Last updated: 2026-07-14 (T-016 prompt-first: hardened generation.rs with 2026 X ranking signals — conversation-forcing endings, zero main-post URLs, hashtag limit, bookmarks, engagement velocity. UI stretch deferred.)
 
 ---
 
@@ -28,6 +28,7 @@ A **local-first desktop app** that helps the user stay on top of Tesla/TSLA/Elon
 - **Human approval required** — Every post must be explicitly approved in the MVP.
 - **Transparent research** — User can always see the sources that fed a draft.
 - **Fresh take required** — Drafts must offer original analysis, implications, connections, or a novel angle. They must not merely restate or closely paraphrase what has already been widely reported or said on X. When specific facts are drawn from sources, they must be explicitly attributed inline in the generated post.
+- **Algorithm-aware virality** — Generated drafts must be optimized for real 2026 X ranking signals (engagement velocity in first 30–60 min, reply weight 13.5–150× likes, bookmarks, native media, dwell time, strong hooks, conversation-forcing endings) while never sacrificing the Fresh take + fact-backing bar. Facts are never relaxed for virality.
 - **Tests for every new feature** — No feature is considered complete until it has automated tests. Tests are part of the definition of done. This applies to both backend commands and frontend behavior.
 - **Simple & reliable** — Prefer boring, debuggable solutions over clever ones.
 - **Secure by default** — Keys move to OS secure storage before any public distribution.
@@ -196,6 +197,38 @@ Record important choices here with date + rationale.
 - **Tradeoffs:** Keys are stored in plaintext within the app's data directory. This is acceptable for local development and early testing, but **must** be replaced with proper OS secure storage (keychain / credential vault) before packaging/distribution.
 - **Related:** Directly fulfills the request to make the API key "submittable on the Settings tab". Advances T-008 (Settings UI for credentials). Also involved UI polish (Show/Hide toggle, fixed label overlap, save feedback).
 
+### 2026-07-14 — X Algorithm Awareness & Virality Optimization (deep research integration)
+- **Decision:** Generation prompts and product behavior must be explicitly optimized against the real July 2026 X (For You) ranking factors, while the "Fresh take + fact-backing" bar remains non-negotiable. Facts are never relaxed for virality.
+- **Source of truth research summary** (compiled from open-source algorithm analyses, Sprout Social, OpenTweet, AdLibrary, Teract AI, X Business organic best practices, and production behavior studies):
+
+  **Top ranking signals (impact order):**
+  1. **Engagement Velocity** (highest weight, ~1000× relative) — first 15–60 minutes decide expansion vs death. Target 8–15+ quality engagements early.
+  2. **Engagement type weights** (Like = 1× baseline):
+     - Reply + author replies back → **75–150×**
+     - Reply → 13.5–27×
+     - Quote → 20–25×
+     - Repost → ~20×
+     - Bookmark → 10–12×
+     - Profile click → ~12×
+     - Dwell time / video completion → high
+     - Like → 1× (or 0.5×)
+  3. **Content format**: Native video (≤60s high completion) strongest boost (6–10×). Images/carousels +30–150%. Threads 2–3× total engagement. External links in main post = 30–90% reach suppression.
+  4. **Author**: X Premium 2–8× distribution boost; Tweepcred / engagement rate / health.
+  5. **Time decay**: ~half life every 6 hours; near-zero after 24h without late burst.
+  6. **Penalties**: >1–2 hashtags (spam), engagement bait language, low-effort, high block/mute/report, external links in primary body.
+  7. **Practical winners**: Strong first-line hook, conversation-forcing ending (real question / hot take), high-value native media, reply to every early comment (creates the 150× signal), post at audience peak (generally Tue–Thu 9am–3pm / 12–6pm local).
+
+- **Implications for x-poster**:
+  - Strengthen `generation.rs` system + user prompts (all styles) with the above signals: mandatory strong hook, reply-bait ending, media recommendation, zero main-post links, conversation depth language.
+  - Keep existing HUMAN VOICE + ENGAGEMENT + FACT-BACKING rules; the new research is additive and more precise.
+  - Future: optional "Virality Score" preview in DraftEditModal (simple heuristic based on hook presence, question ending, media, length, etc.).
+  - Never sacrifice originality, attribution, or fact density.
+  - Timing guidance can later appear as a soft recommendation in the Queue (user still chooses when to post).
+
+- **Rationale:** Previous engagement/views work (2026-06-22 + 2026-07-13) was directionally correct but lacked the precise, weighted, open-source-derived factors that actually drive For You distribution in mid-2026. This decision makes the product algorithmically sophisticated while remaining fully human-gated and fact-first.
+- **Related files:** Primarily `src-tauri/src/generation.rs` (prompt builders + tests). Secondary: DraftEditModal for future score UI, ResearchTab for freshness already handled.
+- **Non-goals:** No automatic posting, no engagement farming pods, no hashtag stuffing, no fabricated engagement.
+
 ---
 
 
@@ -257,6 +290,12 @@ This is the minimum that makes the app actually useful.
 - [x] **T-013** — Draft history / posted log with direct X links — posted subtab + "View on X" + search/filter potential (links work + history usable)
 - [~] **T-014** — Basic image support (attach or generate simple visuals) — advanced backend (meta/og/grok-meme + persist + upload) + edit UI; further controls added in 2026-06-21 polish
 - Additional polish completed in 2026-06-21 batch: removed dead plugin-sql dep, implemented live 280 char counter (using pre-existing CSS classes) + over-limit guard, unified draft count/style prefs to DB settings (single source of truth + migration from LS)
+- [x] **T-016** — Algorithm-aware virality optimization (2026-07-14 research) — **prompt core done 2026-07-14**
+  - [x] Harden all generation system/user prompts with precise 2026 ranking signals (engagement velocity, conversation-forcing endings, bookmarks, zero main-post links, 0–1 hashtags, strong first-line hooks, native media pairing).
+  - [x] Keep Fresh take + FACT-BACKING non-negotiable (`Facts are never relaxed for virality`).
+  - [x] Update regression tests to assert presence of the new signals (all styles system + user prompts).
+  - [ ] Optional stretch: simple "Virality Potential" heuristic score + suggestions shown in DraftEditModal (hook present? question ending? media? length? etc.).
+  - [ ] Soft posting-time recommendation in Queue (based on general best windows + user’s past success if available).
 
 ### Phase 3 — Advanced / Nice to Have
 
@@ -265,6 +304,7 @@ This is the minimum that makes the app actually useful.
 - [ ] Draft templates or tone controls
 - [ ] Export / backup of local data
 - [ ] Dark mode refinements, better empty states, keyboard shortcuts
+- [ ] Full "Virality Score" panel + A/B style suggestions in the edit modal
 
 ---
 
@@ -276,6 +316,9 @@ This is the minimum that makes the app actually useful.
 - Image strategy: stock photos, AI-generated, or none for MVP?
 - Rate limiting / cost control for xAI calls?
 - **Fresh take specifics:** How strictly do we enforce original analysis vs allowing some factual summarization? Should the app fetch the user's own recent X posts before generation to avoid self-repetition? How do we detect "already widely discussed angles" in research results?
+- ~~What actually drives For You distribution in 2026?~~ **Resolved 2026-07-14:** See Design Decision "X Algorithm Awareness & Virality Optimization". Primary levers: early engagement velocity + reply weight (especially author engagement) + bookmarks + native media + hooks + conversation endings. External links and hashtag spam are hard negatives. Premium helps.
+- How aggressively should we surface a live "Virality Potential" score in the edit modal (heuristic vs future ML)?
+- Should we later add a post-posting analytics feedback loop (impressions/engagement pulled back into the app) to refine timing/style recommendations?
 
 Add new questions here as they come up. Resolve and move to Design Decisions when answered.
 
@@ -286,6 +329,57 @@ Add new questions here as they come up. Resolve and move to Design Decisions whe
 This section captures key discussions from conversations so future sessions can pick up context quickly.
 
 **Format:** Add new entries at the **top**.
+
+---
+
+### 2026-07-14 — T-016 implemented: algorithm-aware virality prompts (prompt-first slice)
+
+**Objective:** Execute T-016 core — harden generation prompts with precise 2026 For You ranking signals without relaxing Fresh take / FACT-BACKING / dual bar.
+
+**What changed (`src-tauri/src/generation.rs` only + this PLAN.md):**
+- Expanded `ENGAGEMENT_AND_VIEWS_RULES` → **ENGAGEMENT + VIEWS + 2026 X RANKING**: early engagement velocity (first 30–60 min), conversation-forcing endings (real questions / debate hooks, not bait), zero external URLs in main post body, 0 hashtags preferred (at most one), bookmark/quote-worthy density, native media pairing, anti-patterns, facts-never-relaxed guard.
+- Insight HUMAN VOICE subsection: conversation-forcing close + zero URLs / hashtag limit + velocity framing; new BAD examples (flat ending, raw https:// in body).
+- Sibling style mirrors (informative/funny/witty/meme): short append for conversation-forcing + zero URLs + hashtag limit.
+- Role lines: algorithm-aware / For You engagement velocity.
+- User prompt `engagement_requirement`: full checklist including conversation-forcing, zero URLs, hashtag limit, bookmark-worthy, facts guard.
+- Tests: `test_system_prompt_requires_insight_and_stock_tags` + `test_all_styles_system_and_user_prompts_require_engagement_and_views` assert new phrases on all five styles (system + user).
+- Exemplar consts left unchanged (no URLs/hashtags; avoid dual-bar length churn).
+
+**Verification:**
+- `cargo test generation` → 29 passed.
+- Full `cargo test` → 59 passed.
+- `npm test -- --run` → 70 passed (no frontend changes).
+
+**Deferred (T-016 stretch):** Virality Potential score in DraftEditModal; soft posting-time tip in Queue.
+
+**Non-claims:** Does not guarantee production impressions; LLM output remains non-deterministic; success is improved *potential* via instructions + regression coverage.
+
+---
+
+### 2026-07-14 — Deep research integration: What makes a popular post on X (2026 algorithm)
+
+**Objective / trigger:** User requested "Really research what makes a popular post on x" then "put this in a form for a grok build /plan to execute" then "This is my current plan, can you augment it with the new research".
+
+**Research performed (tools used):**
+- Multiple web_search + browse_page on 2026 X algorithm analyses (Sprout Social, OpenTweet, AdLibrary, Teract AI, SocialPilot, X Business organic best practices, open-source GitHub algorithm weight extractions).
+- Key findings distilled into precise ranking factors: Engagement Velocity #1, Reply (+author reply) 13.5–150× Like, Bookmarks high, Native video strongest media, External links heavily suppressed, Premium 2–8×, Time decay ~6h half-life, strong first-line hooks + conversation-forcing endings win, 0–1 hashtags, etc.
+- Cross-checked against prior human-voice / engagement+views work already in generation.rs (2026-06-22 + 2026-07-13).
+
+**What was changed in this PLAN.md:**
+- Updated "Last updated" header.
+- Added new Guiding Principle: **Algorithm-aware virality** (facts never relaxed for virality).
+- Added full Design Decision **2026-07-14 — X Algorithm Awareness & Virality Optimization** with complete ranked signals table + implications for prompts, future UI score, and non-goals.
+- Added new Phase 2 task **T-016** — Algorithm-aware virality optimization (harden generation prompts + tests; optional Virality Potential score in edit modal; soft timing tip).
+- This Session Log entry.
+
+**Impact on product:**
+- Next implementation work should treat T-016 as high priority (prompt-only change first — very high leverage, zero UI risk, reuses all existing test patterns from the human-voice / engagement slices).
+- The research is now the permanent source of truth for "what good looks like" on X in mid-2026.
+- Complements (does not replace) Fresh take + FACT-BACKING + recency rules.
+
+**No code changes yet** — this is pure living-document augmentation so future Grok Build / sessions start from a fully informed baseline. Ready for `grok plan` or direct implementation of T-016.
+
+**Related external artifact:** Earlier session also produced `/artifacts/GROK_BUILD_PLAN_X_Viral_Post_System.md` (standalone viral post generator plan). That can be referenced or partially absorbed if we ever want a pure CLI sibling tool, but primary path is evolving x-poster itself via T-016.
 
 ---
 

@@ -153,12 +153,19 @@ const LENGTH_AND_CONTEXT_RULES: &str = r#"- LENGTH + ENCOMPASSING CONTEXT (MANDA
   - BAD (fact-dump, no insight): lists every named party and year but ends with no implication, second-order effect, or "so what" beyond restating the outcome
   - BAD (insight-only, thin facts): a clever read-through or prediction with only one vague fact or a headline paraphrase — fails the specific-facts-from-sources rule"#;
 
-/// View/engagement guidance shared by every style path (system prompt). Facts/dual bar stay mandatory.
-const ENGAGEMENT_AND_VIEWS_RULES: &str = r#"- ENGAGEMENT + VIEWS (MANDATORY — every style):
-  - Optimize every draft for high engagement and views on X: a scroll-stopping first-line hook, human conversational voice, and at least one quotable/share-worthy line people want to screenshot, quote-tweet, or reply to.
+/// View/engagement + 2026 For You ranking guidance shared by every style path.
+/// Facts/dual bar stay mandatory — never relaxed for virality.
+const ENGAGEMENT_AND_VIEWS_RULES: &str = r#"- ENGAGEMENT + VIEWS + 2026 X RANKING (MANDATORY — every style):
+  - Optimize every draft for high engagement and views on X (For You distribution): scroll-stopping first-line hook, human conversational voice, bookmark/quote-worthy density, and a conversation-forcing ending that invites real replies.
+  - Early engagement velocity matters: the first 30–60 minutes after posting decide expansion vs death. Write posts that make people stop, save, quote, and especially *reply* — replies (and author engaging those replies) outweigh likes by a large margin.
   - First line = the hook. Lead with a surprising fact, bold claim, intriguing question, vivid scene, or "wait, what?" moment that stops the scroll. Never open with dry wire-copy ("The company announced...", "According to a report...", "A court ruled that...").
+  - Conversation-forcing ending (MANDATORY): close with a real question, sharp implication, or debate-worthy claim that invites genuine replies — not engagement bait ("Like if you agree", "RT if…", "comment YES"). The body stays a self-contained standalone story; the ending *invites* discussion without turning the post into a reply.
+  - Zero external URLs in the main post body (external links suppress reach). Prefer native context + at most one cashtag; attribution via @handle or "source: Publication Name" is fine — never paste https:// links.
+  - Hashtags: 0 preferred, at most one hashtag total. Never multi-hashtag spam walls.
+  - Bookmark / screenshot / quote worthiness: include at least one dense, save-worthy line people want to screenshot, bookmark, or quote-tweet.
+  - Native media: when an image will attach, write text that pairs with the visual; never pad with "link in bio" or external redirects.
   - Sound human, not AI: conversational prose full of contractions (it's, don't, we're), natural rhythm, short punchy sentences mixed with longer ones — like an enthusiast geeking out with friends, not a press release or LinkedIn post.
-  - Build share-worthiness into the body: emotional resonance, storytelling flow, or a non-obvious implication that makes people think "exactly" or "whoa" and want to amplify it.
+  - Anti-patterns: engagement bait, dry wire-copy openers, pure fact dumps with no conversation-forcing close, multi-hashtag spam, raw URLs in the body.
   - Facts are never relaxed for virality: still obey EVERY POST MUST BE BACKED BY SPECIFIC FACTS FROM THE SOURCES and DUAL BAR. Never fabricate claims or ship pure engagement bait without named source details."#;
 
 fn shared_generation_rules(user_provided: bool) -> String {
@@ -231,12 +238,14 @@ fn insight_style_rules() -> String {
 2. ANTI-PHRASING RULE:
    - Never reuse verbs, sentence structures, or headline phrasing directly from the source or title. Re-express the core implication in fresh language.
 
-3. HUMAN VOICE + ENGAGEMENT FOR VIRAL POTENTIAL (applies to all styles; reinforces ENGAGEMENT + VIEWS):
+3. HUMAN VOICE + ENGAGEMENT FOR VIRAL POTENTIAL (applies to all styles; reinforces ENGAGEMENT + VIEWS + 2026 X RANKING):
    - Sound like a real human enthusiast or insider tweeting to fellow fans, not an AI news summarizer or press release. Use conversational prose full of contractions (it's, don't, we're, that's), natural rhythm, short punchy sentences mixed with longer ones, and a tone that's excited, wry, or in awe — like you're geeking out in the replies.
    - Strong first-line hook required on every post: Lead with a surprising fact, bold claim, intriguing question, vivid scene, or "wait, what?" moment that stops the scroll and makes people read the rest — this is how posts earn views in the feed.
-   - Drive engagement and quotability: Build in lines that feel screenshot-worthy or reply-baiting — subtle emotional resonance (the relief of a bureaucracy lifted, the "this is why it matters for the future" spark), storytelling flow that carries the reader, or implications that make followers think "exactly" or "whoa, never thought of it that way" and want to quote or tag someone.
+   - Drive engagement and quotability: Build in lines that feel screenshot-worthy, bookmark-worthy, or reply-baiting — subtle emotional resonance (the relief of a bureaucracy lifted, the "this is why it matters for the future" spark), storytelling flow that carries the reader, or implications that make followers think "exactly" or "whoa, never thought of it that way" and want to quote or tag someone.
+   - Conversation-forcing close: end on a real question, sharp implication, or debate-worthy claim that invites genuine replies (replies beat likes for For You ranking). Keep the body a self-contained standalone story — do not write as if replying to someone else's post.
+   - Zero external URLs in the post body; 0 hashtags preferred (at most one). Never multi-hashtag spam or paste https:// links.
    - Weave the key concrete facts from the sources (e.g. the 2009 Open Beaches Amendment with its 77% voter approval and permanent public easement guarantee, the 2013 law creating the space-flight exception, the litigants SaveRGV joined by Sierra Club and Carrizo/Comecrudo Nation, Justice Huddle's unanimous opinion that the amendment creates no private right to sue, "dismissed with prejudice", the ~450 hours per year of closures that actually forced repeated pad stands-downs and test delays) into flowing narrative sentences. Never fall into summary voice, bullet lists, or "the court ruled that..." dryness.
-   - The whole point: higher viral potential and more views. Posts that feel alive, human, worth amplifying and arguing about — while 100% obeying the "EVERY POST MUST BE BACKED BY SPECIFIC FACTS" rule above and never fabricating.
+   - The whole point: higher viral potential and more views via early engagement velocity (hooks + replies + bookmarks). Posts that feel alive, human, worth amplifying and arguing about — while 100% obeying the "EVERY POST MUST BE BACKED BY SPECIFIC FACTS" rule above and never fabricating.
 
 4. STRUCTURE FOR STANDALONE INSIGHT POSTS (not replies):
    - Write as a self-contained mini-story or analysis with an encompassing arc: background → what happened → concrete impact → fresh insight. A reader who has never seen the source or the news must still understand the full situation without prior context.
@@ -249,7 +258,9 @@ fn insight_style_rules() -> String {
 GOOD (human voice, hooky, dual bar — named facts + non-obvious takeaway from primary + related coverage): {insight_good}
 BAD (stilted/AI-like or flat non-engaging, even with facts): "The Texas Supreme Court issued a unanimous ruling written by Justice Rebeca Huddle determining that the 2009 Open Beaches Amendment to the Texas Constitution does not create a private right of action for enforcement of beach access rights against the 2013 space flight activities authorization, resulting in dismissal with prejudice of the litigation brought by SaveRGV and joined by the Sierra Club and Carrizo/Comecrudo Nation of Texas." (dry, list-y, zero hook, zero flow, zero quotable human spark — the exact voice to avoid for engagement/virality)
 BAD (fact-dump without insight): "2009: 77% beach amendment. 2013 Boca Chica closures. SaveRGV + Sierra + Carrizo sued. Sup Ct (Huddle): no private right to sue. Dismissed w/ prejudice. ~450hrs/yr pad blocks ended. $SPCX" (all facts, no second-order read-through)
-BAD (insight without facts): "Private beach suits no longer hold Starship cadence hostage — huge for launch economics. $SPCX" (clever take, zero named source details)"#,
+BAD (insight without facts): "Private beach suits no longer hold Starship cadence hostage — huge for launch economics. $SPCX" (clever take, zero named source details)
+BAD (ends flat, no conversation-forcing close): packs solid facts then dies on a dry restatement with no question, sharp implication, or debate hook for replies
+BAD (external URL in body): "... Full story: https://example.com/article $SPCX" (raw links suppress reach — zero external URLs in the main post)"#,
         insight_good = HUMAN_VOICE_GOOD_INSIGHT,
     )
 }
@@ -267,7 +278,7 @@ GOOD (RSS): "Per source: Teslarati, Tesla widened Austin Robotaxi geofence again
 GOOD (X): "As @SawyerMerritt reported, Starship completed another successful booster catch — the concrete reuse milestone that shortens turnaround toward higher launch cadence $SPCX"
 BAD: "Robotaxi expansion changes the regulatory confidence calculus for margin mix read-through." (too analyst-heavy for informative mode)
 BAD (thin facts): "Tesla expanded Robotaxi in Austin again. $TSLA" (headline only; no named details or why-it-matters)
-- Apply human voice + engagement for views: scroll-stopping first-line hooks (surprising fact, bold claim or question), conversational prose full of contractions and natural rhythm, quotable/share-worthy or reply-baiting lines, weave facts into flowing narrative. Optimize for high engagement and views without dropping the fact bar.
+- Apply human voice + engagement for views: scroll-stopping first-line hooks (surprising fact, bold claim or question), conversational prose full of contractions and natural rhythm, quotable/share-worthy or reply-baiting lines, weave facts into flowing narrative. Conversation-forcing ending; zero external URLs; 0 hashtags preferred (at most one). Optimize for high engagement and views without dropping the fact bar.
 GOOD (human voice, informative style — scene-setting, conversational, multi-fact, <280): {informative_good}
 BAD (informative but flat/AI): "The court determined that the constitutional amendment does not provide a private right of action, leading to dismissal of the beach access litigation." (no hook, no voice, no flow, thin facts — zero engagement potential)"#,
         informative_good = HUMAN_VOICE_GOOD_INFORMATIVE,
@@ -284,7 +295,7 @@ fn funny_style_rules() -> String {
 
 GOOD: "Per source: Teslarati, Tesla widened Austin Robotaxi again — my wallet is ready to be a backseat driver with zero driving skills $TSLA"
 BAD: "lol tesla go brr" (no source anchor or substance)
-- Apply human voice + engagement for views: scroll-stopping first-line hooks, conversational prose with contractions, quotable/share-worthy punchlines and playful narrative weave of facts. Optimize for high engagement and views without dropping the fact bar.
+- Apply human voice + engagement for views: scroll-stopping first-line hooks, conversational prose with contractions, quotable/share-worthy punchlines and playful narrative weave of facts. Conversation-forcing ending; zero external URLs; 0 hashtags preferred (at most one). Optimize for high engagement and views without dropping the fact bar.
 GOOD (human voice, funny style — playful, quotable, facts in joke, <280): {funny_good}
 BAD (funny but not human/grounded): "Haha SpaceX wins beach lawsuit, very funny." (no facts, no hook, no real joke — zero share potential)"#,
         funny_good = HUMAN_VOICE_GOOD_FUNNY,
@@ -301,7 +312,7 @@ fn witty_style_rules() -> String {
 
 GOOD: "As @SawyerMerritt flagged, another Austin Robotaxi expansion — FSD collecting city miles faster than most people collect airline points $TSLA"
 BAD: "Robotaxi is expanding which is interesting for the company." (flat, no wit)
-- Apply human voice + engagement for views: scroll-stopping first-line hooks, conversational prose, sharp quotable/share-worthy one-liners and witty narrative with facts. Optimize for high engagement and views without dropping the fact bar.
+- Apply human voice + engagement for views: scroll-stopping first-line hooks, conversational prose, sharp quotable/share-worthy one-liners and witty narrative with facts. Conversation-forcing ending; zero external URLs; 0 hashtags preferred (at most one). Optimize for high engagement and views without dropping the fact bar.
 GOOD (human voice, witty style — sharp, quotable one-liner with facts, <280): {witty_good}
 BAD (witty but lifeless): "The ruling clarifies that no private enforcement mechanism exists under the amendment." (clever? no. human? no. — will not earn views)"#,
         witty_good = HUMAN_VOICE_GOOD_WITTY,
@@ -319,7 +330,7 @@ fn meme_style_rules() -> String {
 GOOD: "POV: source: Teslarati says Austin Robotaxi expanded again and you're already mentally filing your robotaxi commute $TSLA"
 GOOD: "Nobody: ... Me: refreshing Robotaxi maps like it's a limited drop @SawyerMerritt"
 BAD: "Starship had a successful test." (reads like news, not a meme)
-- Apply human voice + engagement for views: scroll-stopping first-line hooks, conversational prose, punchy meme energy with quotable/share-worthy hooks and facts in narrative. Optimize for high engagement and views without dropping the fact bar.
+- Apply human voice + engagement for views: scroll-stopping first-line hooks, conversational prose, punchy meme energy with quotable/share-worthy hooks and facts in narrative. Conversation-forcing ending; zero external URLs; 0 hashtags preferred (at most one). Optimize for high engagement and views without dropping the fact bar.
 GOOD (human voice, meme style — punchy viral meme with facts, <280): {meme_good}
 BAD (meme but not human/viral): "Court rules on beach access for launches." (boring text, no meme energy, no facts, no share — zero views potential)"#,
         meme_good = HUMAN_VOICE_GOOD_MEME,
@@ -346,9 +357,9 @@ pub fn build_generation_system_prompt(style: DraftStyle, sources: &[ResearchSour
     };
 
     let role = if user_provided {
-        "You are an expert social media writer creating high-engagement X posts from links and topics the user explicitly requested. Optimize for views and engagement (scroll-stopping hooks, human voice, quotable lines) while staying faithful to the specific content, story, claims, or idea the user pasted. Do not generate a post about a different or only loosely related topic."
+        "You are an expert social media writer creating high-engagement, algorithm-aware X posts from links and topics the user explicitly requested. Optimize for For You engagement velocity (scroll-stopping hooks, human voice, bookmark-worthy lines, conversation-forcing endings, zero external URLs) while staying faithful to the specific content, story, claims, or idea the user pasted. Do not generate a post about a different or only loosely related topic."
     } else {
-        "You are an expert social media writer creating high-engagement X posts for a human who covers Elon Musk's companies (Tesla, SpaceX, xAI, Neuralink, Boring Company). Every draft should be optimized for views and engagement on X (scroll-stopping first line, conversational human voice, share-worthy lines) while staying fully fact-backed."
+        "You are an expert social media writer creating high-engagement, algorithm-aware X posts for a human who covers Elon Musk's companies (Tesla, SpaceX, xAI, Neuralink, Boring Company). Every draft should be optimized for For You engagement velocity (scroll-stopping first line, conversational human voice, share/bookmark-worthy lines, conversation-forcing endings, zero external URLs) while staying fully fact-backed."
     };
 
     let full_style_rules = match style {
@@ -481,7 +492,7 @@ pub fn build_generation_user_prompt(
 
     let length_requirement = "- LENGTH + CONTEXT + DUAL BAR: Aim for 220-279 characters. Include 3-5 specific named facts from the sources plus background, what happened, and why it matters so a zero-context reader gets the full story. Maximize information density AND a useful takeaway in the same post — no pure fact-dumps and no insight-only hot takes. Do not write ultra-compressed shorthand or bare headline rewrites.";
 
-    let engagement_requirement = "- ENGAGEMENT + VIEWS: Open with a scroll-stopping first-line hook; write in human conversational voice (contractions, natural rhythm); include at least one quotable/share-worthy line. Optimize for high engagement and views on X without relaxing the specific-facts or dual-bar rules.";
+    let engagement_requirement = "- ENGAGEMENT + VIEWS + 2026 X RANKING: Open with a scroll-stopping first-line hook; write in human conversational voice (contractions, natural rhythm); include at least one quotable/share-worthy bookmark-worthy line; end with a conversation-forcing question, sharp implication, or debate-worthy claim (no engagement bait); zero external URLs in the post body; 0 hashtags preferred (at most one). Optimize for high engagement and views on X without relaxing the specific-facts or dual-bar rules. Facts are never relaxed for virality.";
 
     let recency_requirement = "- RECENCY: Research subjects are intended to be hours-old (prefer same-day / last few hours) and at most a few days old. Write as timely commentary on a fresh development — not evergreen history or week-old rehash. If multiple sources are listed, lean on the freshest dated ones.";
 
@@ -1144,14 +1155,25 @@ mod tests {
         assert!(prompt.contains("reply-baiting"));
         assert!(prompt.contains("viral potential"));
         assert!(prompt.contains("geeking out in the replies"));
-        assert!(prompt.contains("screenshot-worthy or reply-baiting"));
-        // Shared ENGAGEMENT + VIEWS block (every style path via shared_generation_rules)
+        assert!(
+            prompt.contains("screenshot-worthy or reply-baiting")
+                || prompt.contains("screenshot-worthy, bookmark-worthy, or reply-baiting")
+        );
+        // Shared ENGAGEMENT + VIEWS + 2026 X RANKING block (every style path via shared_generation_rules)
         assert!(prompt.contains("ENGAGEMENT + VIEWS"));
+        assert!(prompt.contains("2026 X RANKING"));
         assert!(prompt.contains("high engagement and views"));
         assert!(prompt.contains("scroll-stopping first-line hook"));
-        assert!(prompt.contains("quotable/share-worthy"));
+        assert!(prompt.contains("quotable/share-worthy") || prompt.contains("bookmark/quote-worthy"));
         assert!(prompt.contains("Facts are never relaxed for virality"));
-        assert!(prompt.contains("optimized for views and engagement"));
+        assert!(prompt.contains("algorithm-aware") || prompt.contains("For You engagement velocity"));
+        // 2026 ranking signals (T-016)
+        assert!(prompt.contains("conversation-forcing"));
+        assert!(prompt.contains("Zero external URLs") || prompt.contains("zero external URLs"));
+        assert!(prompt.contains("at most one hashtag") || prompt.contains("0 hashtags preferred"));
+        assert!(prompt.contains("bookmark"));
+        assert!(prompt.contains("engagement velocity") || prompt.contains("first 30–60 minutes") || prompt.contains("first 30-60 minutes"));
+        assert!(prompt.contains("no conversation-forcing close") || prompt.contains("ends flat"));
         // Length + encompassing context rules
         assert!(prompt.contains("LENGTH + ENCOMPASSING CONTEXT"));
         assert!(prompt.contains("aim for 220-279 characters"));
@@ -1178,7 +1200,7 @@ mod tests {
         assert!(INSIGHT_LEGAL_GOOD.contains("Starship free of beach-suit lag"));
         assert!(INSIGHT_MOODYS_GOOD.contains("underweights that balance-sheet headroom"));
 
-        // Every style path: engagement/views guidance + fact bar + style GOOD exemplar via real builders.
+        // Every style path: engagement/views + 2026 ranking guidance + fact bar via real builders.
         for style in [
             DraftStyle::Insight,
             DraftStyle::Informative,
@@ -1193,6 +1215,11 @@ mod tests {
                 style
             );
             assert!(
+                p.contains("2026 X RANKING"),
+                "style {:?} missing 2026 X RANKING block",
+                style
+            );
+            assert!(
                 p.contains("scroll-stopping first-line hook"),
                 "style {:?} missing scroll-stopping hook guidance",
                 style
@@ -1203,8 +1230,23 @@ mod tests {
                 style
             );
             assert!(
-                p.contains("quotable/share-worthy"),
-                "style {:?} missing quotable/share-worthy",
+                p.contains("conversation-forcing"),
+                "style {:?} missing conversation-forcing ending guidance",
+                style
+            );
+            assert!(
+                p.contains("Zero external URLs") || p.contains("zero external URLs"),
+                "style {:?} missing zero external URLs rule",
+                style
+            );
+            assert!(
+                p.contains("at most one hashtag") || p.contains("0 hashtags preferred"),
+                "style {:?} missing hashtag limit",
+                style
+            );
+            assert!(
+                p.contains("bookmark"),
+                "style {:?} missing bookmark-worthiness guidance",
                 style
             );
             assert!(
@@ -1275,9 +1317,23 @@ mod tests {
         ] {
             let sys = build_generation_system_prompt(style, &[]);
             assert!(sys.contains("ENGAGEMENT + VIEWS"), "{:?}", style);
+            assert!(sys.contains("2026 X RANKING"), "{:?}", style);
             assert!(sys.contains("scroll-stopping"), "{:?}", style);
             assert!(sys.contains("high engagement and views"), "{:?}", style);
+            assert!(sys.contains("conversation-forcing"), "{:?}", style);
+            assert!(
+                sys.contains("Zero external URLs") || sys.contains("zero external URLs"),
+                "{:?}",
+                style
+            );
+            assert!(
+                sys.contains("at most one hashtag") || sys.contains("0 hashtags preferred"),
+                "{:?}",
+                style
+            );
+            assert!(sys.contains("bookmark"), "{:?}", style);
             assert!(sys.contains("EVERY POST MUST BE BACKED BY SPECIFIC FACTS FROM THE SOURCES"), "{:?}", style);
+            assert!(sys.contains("Facts are never relaxed for virality"), "{:?}", style);
 
             let sources = vec![sample_rss(
                 "1",
@@ -1292,13 +1348,38 @@ mod tests {
                 style
             );
             assert!(
+                user.contains("2026 X RANKING"),
+                "user prompt missing 2026 ranking for {:?}",
+                style
+            );
+            assert!(
                 user.contains("scroll-stopping first-line hook"),
                 "user prompt missing hook for {:?}",
                 style
             );
             assert!(
-                user.contains("quotable/share-worthy"),
-                "user prompt missing share-worthy for {:?}",
+                user.contains("quotable/share-worthy") || user.contains("bookmark-worthy"),
+                "user prompt missing share/bookmark-worthy for {:?}",
+                style
+            );
+            assert!(
+                user.contains("conversation-forcing"),
+                "user prompt missing conversation-forcing for {:?}",
+                style
+            );
+            assert!(
+                user.contains("zero external URLs") || user.contains("Zero external URLs"),
+                "user prompt missing zero external URLs for {:?}",
+                style
+            );
+            assert!(
+                user.contains("at most one") || user.contains("0 hashtags preferred"),
+                "user prompt missing hashtag limit for {:?}",
+                style
+            );
+            assert!(
+                user.contains("Facts are never relaxed for virality"),
+                "user prompt missing facts-not-relaxed guard for {:?}",
                 style
             );
             // Fact bar still required on user prompt
