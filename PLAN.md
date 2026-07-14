@@ -3,7 +3,7 @@
 > **Living document.** This file captures architecture decisions, design discussions, tradeoffs, and the current task breakdown.
 > Update it after any significant conversation or when priorities shift.
 >
-> Last updated: 2026-07-14 (T-016 prompt-first: hardened generation.rs with 2026 X ranking signals — conversation-forcing endings, zero main-post URLs, hashtag limit, bookmarks, engagement velocity. UI stretch deferred.)
+> Last updated: 2026-07-14 (Generate Reply: parallel to custom post input; reply-mode prompts; in_reply_to_tweet_id + threaded post on Approve.)
 
 ---
 
@@ -329,6 +329,23 @@ Add new questions here as they come up. Resolve and move to Design Decisions whe
 This section captures key discussions from conversations so future sessions can pick up context quickly.
 
 **Format:** Add new entries at the **top**.
+
+---
+
+### 2026-07-14 — Generate Reply (parallel to generate from link/topic)
+
+**Objective:** Let the user paste an X post URL (or parent text) and generate a high-quality *reply* draft, with Approve & Post publishing as an in-thread reply when a tweet id is known.
+
+**What changed:**
+- Migration `0008_drafts_in_reply_to_tweet_id.sql` + `Draft.in_reply_to_tweet_id` on create/read.
+- `GenerationKind::{StandalonePost, Reply}` + reply-specific system/user prompts (`REPLY MODE`, shorter length, no standalone-structure wall).
+- Command `generate_reply_from_input` + `x_post::post_tweet(..., in_reply_to_tweet_id)`.
+- UI: `CustomReplyInput` on Research Current tab; Queue cards + edit modal show reply badge / parent link.
+- Frontend: `generateReplyFromInput`, `isReplyDraft`.
+
+**Verification:** `cargo test` 61 passed; `npm test` 75 passed.
+
+**Human control:** Still must review and Approve & Post. Paste X status URL for true threaded reply; free text still generates a reply draft but posts as a normal tweet if no id.
 
 ---
 

@@ -13,6 +13,8 @@ import {
   generateDraftFromInput,
   generateDraftFromSource,
   generateDraftsFromLatestResearch,
+  generateReplyFromInput,
+  generateReplyFromSource,
   getAllHistoricalSources,
   getLatestResearchRun,
   resetResearchData,
@@ -76,16 +78,25 @@ export function ResearchTab({
   })
   const [loading, setLoading] = useState(false)
   const [generating, setGenerating] = useState(false)
-  const [generatingSourceId, setGeneratingSourceId] = useState<string | null>(null)
+  const [generatingSource, setGeneratingSource] = useState<{
+    id: string
+    kind: 'post' | 'reply'
+  } | null>(null)
   const [customInput, setCustomInput] = useState('')
   const [generatingFromInput, setGeneratingFromInput] = useState(false)
+  const [generatingReplyFromInput, setGeneratingReplyFromInput] = useState(false)
   const [pipelinePhase, setPipelinePhase] = useState<'idle' | 'research' | 'generate'>('idle')
   const [isResetting, setIsResetting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const isPipelineBusy = pipelinePhase !== 'idle'
   const isBusy =
-    loading || generating || isPipelineBusy || generatingSourceId !== null || generatingFromInput
+    loading ||
+    generating ||
+    isPipelineBusy ||
+    generatingSource !== null ||
+    generatingFromInput ||
+    generatingReplyFromInput
 
   // Hydrate count/style from DB (authoritative). Falls back to LS + migrates on first use.
   useEffect(() => {
@@ -206,8 +217,37 @@ export function ResearchTab({
     }
   }
 
+  const handleGenerateReplyFromInput = async () => {
+    const trimmed = customInput.trim()
+    if (!trimmed) {
+      return
+    }
+
+    setGeneratingReplyFromInput(true)
+    setError(null)
+    onBusyChange?.(1)
+
+    try {
+      const drafts = await generateReplyFromInput(trimmed, draftStyle)
+      const asReply = drafts.some((d) => d.in_reply_to_tweet_id)
+      onShowToast?.(
+        asReply
+          ? `Generated ${drafts.length} reply draft(s) — Approve & Post will reply in-thread.`
+          : `Generated ${drafts.length} reply draft(s). (No tweet id found — will post as a normal tweet unless you paste an X status URL.)`
+      )
+      onBumpRefresh?.()
+      setCustomInput('')
+    } catch (generateError: unknown) {
+      console.error(generateError)
+      setError(errorMessage(generateError, 'Failed to generate reply from your input.'))
+    } finally {
+      setGeneratingReplyFromInput(false)
+      onBusyChange?.(-1)
+    }
+  }
+
   const handleGenerateFromSource = async (sourceId: string) => {
-    setGeneratingSourceId(sourceId)
+    setGeneratingSource({ id: sourceId, kind: 'post' })
     setError(null)
     onBusyChange?.(1)
 
@@ -220,7 +260,31 @@ export function ResearchTab({
       console.error(generateError)
       setError(errorMessage(generateError, 'Failed to generate post from this story.'))
     } finally {
-      setGeneratingSourceId(null)
+      setGeneratingSource(null)
+      onBusyChange?.(-1)
+    }
+  }
+
+  const handleGenerateReplyFromSource = async (sourceId: string) => {
+    setGeneratingSource({ id: sourceId, kind: 'reply' })
+    setError(null)
+    onBusyChange?.(1)
+
+    try {
+      const drafts = await generateReplyFromSource(sourceId, draftStyle)
+      const asReply = drafts.some((d) => d.in_reply_to_tweet_id)
+      onShowToast?.(
+        asReply
+          ? `Generated ${drafts.length} reply draft(s) — Approve & Post will reply in-thread.`
+          : `Generated ${drafts.length} reply draft(s). (No tweet id on source — will post as a normal tweet if you approve.)`
+      )
+      onBumpRefresh?.()
+      await refreshResearchViews()
+    } catch (generateError: unknown) {
+      console.error(generateError)
+      setError(errorMessage(generateError, 'Failed to generate reply from this story.'))
+    } finally {
+      setGeneratingSource(null)
       onBusyChange?.(-1)
     }
   }
@@ -425,8 +489,10 @@ export function ResearchTab({
           <CustomDraftInput
             value={customInput}
             onChange={setCustomInput}
-            onGenerate={() => void handleGenerateFromInput()}
-            generating={generatingFromInput}
+            onGeneratePost={() => void handleGenerateFromInput()}
+            onGenerateReply={() => void handleGenerateReplyFromInput()}
+            generatingPost={generatingFromInput}
+            generatingReply={generatingReplyFromInput}
             disabled={isBusy}
             hasXaiKey={hasXaiKey}
             draftStyle={draftStyle}
@@ -619,8 +685,14 @@ export function ResearchTab({
                     )}
                     canGenerate={hasXaiKey}
                     isUsed={isResearchSourceUsed(source)}
-                    generating={generatingSourceId === source.id}
+                    generatingPost={
+                      generatingSource?.id === source.id && generatingSource.kind === 'post'
+                    }
+                    generatingReply={
+                      generatingSource?.id === source.id && generatingSource.kind === 'reply'
+                    }
                     onGeneratePost={(sourceId) => void handleGenerateFromSource(sourceId)}
+                    onGenerateReply={(sourceId) => void handleGenerateReplyFromSource(sourceId)}
                   />
                 ))}
               </div>
@@ -641,8 +713,9 @@ export function ResearchTab({
         <HistoricalSourcesList
           reloadToken={historicalResetKey}
           hasXaiKey={hasXaiKey}
-          generatingSourceId={generatingSourceId}
+          generatingSource={generatingSource}
           onGenerateFromSource={(sourceId) => void handleGenerateFromSource(sourceId)}
+          onGenerateReplyFromSource={(sourceId) => void handleGenerateReplyFromSource(sourceId)}
         />
       )}
     </div>

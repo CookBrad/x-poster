@@ -4,11 +4,33 @@ use crate::commands::{
 use crate::constants::DraftStyle;
 use crate::draft_image;
 use crate::research::ResearchSource;
+use crate::x_post::extract_tweet_id_from_url;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use crate::DbPool;
 use std::path::Path;
 use std::time::Duration;
+
+/// Whether Grok should write a standalone post or a reply to a parent post/link.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum GenerationKind {
+    #[default]
+    StandalonePost,
+    Reply,
+}
+
+impl GenerationKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            GenerationKind::StandalonePost => "standalone",
+            GenerationKind::Reply => "reply",
+        }
+    }
+
+    pub fn is_reply(self) -> bool {
+        matches!(self, GenerationKind::Reply)
+    }
+}
 
 // Lifted exemplars to consts per strategy: one source of truth, <280 chars, include required facts (77%, 2013, SaveRGV/Sierra/Carrizo, Huddle, w/ prejudice, ~450hrs).
 // Target ~240-279 chars: scene-setting + named facts + concrete impact + non-obvious takeaway (dual information+insight bar).
@@ -337,52 +359,122 @@ BAD (meme but not human/viral): "Court rules on beach access for launches." (bor
     )
 }
 
-/// Build system prompt for the requested post style.
+/// Shared rules for generating a *reply* to a parent post (not a standalone timeline post).
+const REPLY_MODE_RULES: &str = r#"- REPLY MODE (MANDATORY — this draft will be posted as a reply under the parent post):
+  - Write as a direct reply in the conversation thread. Engage the parent's specific claims, numbers, tone, or question — do NOT write a self-contained standalone news post that ignores the thread context.
+  - Add real value: a sharper insight, missing context, useful correction, concrete supporting fact, witty extension, or a genuine follow-up question. Never pure "this!", "so true", or empty agreement.
+  - Do NOT restate the entire parent post. Assume readers already saw it; advance the conversation.
+  - Prefer 80–220 characters when a tight reply is stronger; use up to 280 only when the extra density earns it. Shorter punchy replies often outperform mini-essays in threads.
+  - Do NOT open with @handle of the parent author (the platform already threads the reply). Do not paste https:// links. 0 hashtags preferred (at most one). At most one cashtag when stock-relevant.
+  - Sound human: contractions, natural rhythm, enthusiast/insider voice. First line should still land (react + hook) even in reply form.
+  - Facts still mandatory: any claim, number, or implication must be grounded in the parent content and/or clearly labeled general knowledge. Never fabricate. Facts are never relaxed for virality.
+  - Constructively bullish on Musk companies when the parent is about those topics; stay factual if the parent is political or unrelated.
+  - Style still applies (insight / informative / funny / witty / meme) but as a *reply flavor*, not a standalone article rewrite."#;
+
+/// Build system prompt for the requested post style (standalone post).
+#[allow(dead_code)] // thin wrapper; production uses `_for_kind`, tests use this default
 pub fn build_generation_system_prompt(style: DraftStyle, sources: &[ResearchSource]) -> String {
+    build_generation_system_prompt_for_kind(style, sources, GenerationKind::StandalonePost)
+}
+
+/// Build system prompt for standalone post or reply generation.
+pub fn build_generation_system_prompt_for_kind(
+    style: DraftStyle,
+    sources: &[ResearchSource],
+    kind: GenerationKind,
+) -> String {
     let user_provided = sources_are_user_provided(sources);
-    let style_rules = match style {
-        DraftStyle::Insight => insight_style_rules(),
-        DraftStyle::Informative => informative_style_rules(),
-        DraftStyle::Funny => funny_style_rules(),
-        DraftStyle::Witty => witty_style_rules(),
-        DraftStyle::Meme => meme_style_rules(),
+
+    let rationale_hint = match (kind, style) {
+        (GenerationKind::Reply, _) => {
+            "1 sentence on what value your reply adds beyond the parent post"
+        }
+        (_, DraftStyle::Insight) => "1 sentence on what useful insight you added beyond the source (and any supporting facts from your general knowledge)",
+        (_, DraftStyle::Informative) => "1 sentence on the key fact you highlighted and why it is useful",
+        (_, DraftStyle::Funny) => "1 sentence on the humorous angle you chose",
+        (_, DraftStyle::Witty) => "1 sentence on the witty hook you used",
+        (_, DraftStyle::Meme) => "1 sentence on the meme format or joke you used",
     };
 
-    let rationale_hint = match style {
-        DraftStyle::Insight => "1 sentence on what useful insight you added beyond the source (and any supporting facts from your general knowledge)",
-        DraftStyle::Informative => "1 sentence on the key fact you highlighted and why it is useful",
-        DraftStyle::Funny => "1 sentence on the humorous angle you chose",
-        DraftStyle::Witty => "1 sentence on the witty hook you used",
-        DraftStyle::Meme => "1 sentence on the meme format or joke you used",
-    };
-
-    let role = if user_provided {
+    let role = if kind.is_reply() {
+        "You are an expert at writing high-value, algorithm-aware *replies* on X. Your draft will be posted as a reply under a specific parent post. Optimize for genuine conversation (replies and author engagement outweigh likes) while staying fact-backed and on-topic to the parent. Do not write a standalone timeline post."
+    } else if user_provided {
         "You are an expert social media writer creating high-engagement, algorithm-aware X posts from links and topics the user explicitly requested. Optimize for For You engagement velocity (scroll-stopping hooks, human voice, bookmark-worthy lines, conversation-forcing endings, zero external URLs) while staying faithful to the specific content, story, claims, or idea the user pasted. Do not generate a post about a different or only loosely related topic."
     } else {
         "You are an expert social media writer creating high-engagement, algorithm-aware X posts for a human who covers Elon Musk's companies (Tesla, SpaceX, xAI, Neuralink, Boring Company). Every draft should be optimized for For You engagement velocity (scroll-stopping first line, conversational human voice, share/bookmark-worthy lines, conversation-forcing endings, zero external URLs) while staying fully fact-backed."
     };
 
-    let full_style_rules = match style {
-        DraftStyle::Insight => format!(
-            "{}\n\n\
-             GOOD (Tesla/X, general fact without attribution + specific with): \"FSD development has long relied on accumulating diverse real-world miles for regulatory progress. As @SawyerMerritt noted, Austin Robotaxi geofence widened again — the read-through for $TSLA isn't the headline, it's faster real-world miles accruing toward regulatory confidence on unsupervised FSD.\"\n\
-             GOOD (RSS): \"Per source: Not A Tesla App, Smart Summon on Cybertruck widens the real-world edge-case pool $TSLA needs before robotaxi scale — the product story is data velocity, not the feature checkbox.\"\n\
-             GOOD (deeper originality, supporting fact added): \"As @WholeMarsBlog posted on Cybertruck FSD, the real signal is the data loop back to Dojo training — each additional mile in unsupervised mode compounds the software moat faster than any hardware ramp, shifting the margin mix story from cars to bits $TSLA. (Supporting context: autonomy software already shows dramatically higher gross margins than vehicle hardware in Tesla's business model.)\"\n\
-             GOOD (standalone financial story with context + facts + support — RSS + external rating like Moody's): {}\n\
-             BAD (regurgitation): \"Teslarati reports Tesla expanded Robotaxi in Austin.\" (just repeats the source)\n\
-             BAD (shallow): \"Robotaxi expansion is interesting for the company and its stock.\" (no specific implication or re-expression)\n\
-             BAD (over-attribution + no context): \"As @SawyerMerritt noted, FSD is Tesla's Full Self-Driving system.\" (attributes common knowledge; also fails to set any scene)\n\
-             BAD (reply-like, assumes reader knows the external event): \"Tesla's $40B cash, zero debt, and steady profits create headroom to self-fund Optimus and robotaxi ramps without dilution, a structural advantage Moody's rating overlooks. $TSLA\" (no explanation of what Moody's actually did or said; no grounding details; feels like a direct comment on the news + article)\n\n\
-             GOOD (legal/regulatory story drawing concrete facts from primary article + related/similar coverage — dual bar: named facts + operational takeaway): {}\n\
-             BAD (vague, no backing facts, exactly the style to avoid): \"Texas Supreme Court unanimously ended years of litigation, ruling the 2009 amendment creates no private right to sue over Boca Chica beach access. The decision removes recurring legal blocks that had forced repeated delays to Starship pad operations.\" (no amendment text, no 2013 law, no plaintiffs, no 450 hrs, no 'with prejudice', no specific prior impact — fails the 'facts to back up the post' rule)\n\
-             BAD (fact-dump without useful insight): packs years/parties/holding but ends with no non-obvious implication beyond restating the dismissal\n\
-             BAD (insight without named facts): a clever cadence/economics take with only a headline paraphrase — fails DUAL BAR\n\n",
-            style_rules, INSIGHT_MOODYS_GOOD, INSIGHT_LEGAL_GOOD
-        ),
-        DraftStyle::Informative => informative_style_rules(),
-        DraftStyle::Funny => funny_style_rules(),
-        DraftStyle::Witty => witty_style_rules(),
-        DraftStyle::Meme => meme_style_rules(),
+    let text_hint = if kind.is_reply() {
+        "the reply text under 280 chars — prefer 80–220 when tight is stronger (include at most one of $TSLA or $SPCX when stock-relevant)"
+    } else {
+        "the tweet/post text — aim for 220-279 chars with encompassing context (include at most one of $TSLA or $SPCX when stock-relevant)"
+    };
+
+    let shared = if kind.is_reply() {
+        // Reply mode: FACT-BACKING + engagement still apply, but standalone-story rules are replaced.
+        format!(
+            "{}\n\n{}",
+            REPLY_MODE_RULES,
+            ENGAGEMENT_AND_VIEWS_RULES
+                .replace(
+                    "conversation-forcing ending that invites genuine replies",
+                    "opening that hooks *and* advances the parent thread (you already are the reply)"
+                )
+                .replace(
+                    "Conversation-forcing ending (MANDATORY): close with a real question, sharp implication, or debate-worthy claim that invites genuine replies — not engagement bait (\"Like if you agree\", \"RT if…\", \"comment YES\"). The body stays a self-contained standalone story; the ending *invites* discussion without turning the post into a reply.",
+                    "You *are* the reply: end on a sharp implication, added fact, or genuine follow-up question that keeps the thread useful — not engagement bait."
+                )
+        )
+    } else {
+        shared_generation_rules(user_provided)
+    };
+
+    // Standalone: full style rules. Reply: short flavor only (skip STRUCTURE FOR STANDALONE walls).
+    let full_style_rules = if kind.is_reply() {
+        let flavor = match style {
+            DraftStyle::Insight => "insightful / non-obvious implication",
+            DraftStyle::Informative => "clear, useful clarification",
+            DraftStyle::Funny => "lighthearted, smile-worthy",
+            DraftStyle::Witty => "sharp and clever",
+            DraftStyle::Meme => "meme-caption energy",
+        };
+        format!(
+            "REPLY STYLE FLAVOR ({style}): write a {flavor} *reply* to the parent.\n\
+             GOOD reply (adds value): engages a specific claim from the parent + one concrete fact or non-obvious takeaway.\n\
+             BAD reply: \"This!\" / \"So true\" / full restatement of the parent / standalone article dump that ignores the thread.",
+            style = style.as_str(),
+            flavor = flavor,
+        )
+    } else {
+        let style_rules = match style {
+            DraftStyle::Insight => insight_style_rules(),
+            DraftStyle::Informative => informative_style_rules(),
+            DraftStyle::Funny => funny_style_rules(),
+            DraftStyle::Witty => witty_style_rules(),
+            DraftStyle::Meme => meme_style_rules(),
+        };
+        match style {
+            DraftStyle::Insight => format!(
+                "{}\n\n\
+                 GOOD (Tesla/X, general fact without attribution + specific with): \"FSD development has long relied on accumulating diverse real-world miles for regulatory progress. As @SawyerMerritt noted, Austin Robotaxi geofence widened again — the read-through for $TSLA isn't the headline, it's faster real-world miles accruing toward regulatory confidence on unsupervised FSD.\"\n\
+                 GOOD (RSS): \"Per source: Not A Tesla App, Smart Summon on Cybertruck widens the real-world edge-case pool $TSLA needs before robotaxi scale — the product story is data velocity, not the feature checkbox.\"\n\
+                 GOOD (deeper originality, supporting fact added): \"As @WholeMarsBlog posted on Cybertruck FSD, the real signal is the data loop back to Dojo training — each additional mile in unsupervised mode compounds the software moat faster than any hardware ramp, shifting the margin mix story from cars to bits $TSLA. (Supporting context: autonomy software already shows dramatically higher gross margins than vehicle hardware in Tesla's business model.)\"\n\
+                 GOOD (standalone financial story with context + facts + support — RSS + external rating like Moody's): {}\n\
+                 BAD (regurgitation): \"Teslarati reports Tesla expanded Robotaxi in Austin.\" (just repeats the source)\n\
+                 BAD (shallow): \"Robotaxi expansion is interesting for the company and its stock.\" (no specific implication or re-expression)\n\
+                 BAD (over-attribution + no context): \"As @SawyerMerritt noted, FSD is Tesla's Full Self-Driving system.\" (attributes common knowledge; also fails to set any scene)\n\
+                 BAD (reply-like, assumes reader knows the external event): \"Tesla's $40B cash, zero debt, and steady profits create headroom to self-fund Optimus and robotaxi ramps without dilution, a structural advantage Moody's rating overlooks. $TSLA\" (no explanation of what Moody's actually did or said; no grounding details; feels like a direct comment on the news + article)\n\n\
+                 GOOD (legal/regulatory story drawing concrete facts from primary article + related/similar coverage — dual bar: named facts + operational takeaway): {}\n\
+                 BAD (vague, no backing facts, exactly the style to avoid): \"Texas Supreme Court unanimously ended years of litigation, ruling the 2009 amendment creates no private right to sue over Boca Chica beach access. The decision removes recurring legal blocks that had forced repeated delays to Starship pad operations.\" (no amendment text, no 2013 law, no plaintiffs, no 450 hrs, no 'with prejudice', no specific prior impact — fails the 'facts to back up the post' rule)\n\
+                 BAD (fact-dump without useful insight): packs years/parties/holding but ends with no non-obvious implication beyond restating the dismissal\n\
+                 BAD (insight without named facts): a clever cadence/economics take with only a headline paraphrase — fails DUAL BAR\n\n",
+                style_rules, INSIGHT_MOODYS_GOOD, INSIGHT_LEGAL_GOOD
+            ),
+            DraftStyle::Informative => informative_style_rules(),
+            DraftStyle::Funny => funny_style_rules(),
+            DraftStyle::Witty => witty_style_rules(),
+            DraftStyle::Meme => meme_style_rules(),
+        }
     };
 
     format!(
@@ -391,24 +483,42 @@ pub fn build_generation_system_prompt(style: DraftStyle, sources: &[ResearchSour
          {full_style_rules}\n\n\
          Return ONLY a JSON array (no markdown fences), each object:\n\
          {{\n\
-           \"text\": \"the tweet/post text — aim for 220-279 chars with encompassing context (include at most one of $TSLA or $SPCX when stock-relevant)\",\n\
+           \"text\": \"{text_hint}\",\n\
            \"rationale\": \"{rationale_hint}\",\n\
            \"primary_author\": \"username without @ for the main source this draft draws from, or null for RSS-only\",\n\
            \"primary_source_index\": 3\n\
          }}\n\n\
          `primary_source_index` is REQUIRED: the 1-based number from the Sources list above that this draft mainly draws from. Each draft must use a different index when possible.",
         role = role,
-        shared = shared_generation_rules(user_provided),
+        shared = shared,
         full_style_rules = full_style_rules,
+        text_hint = text_hint,
         rationale_hint = rationale_hint,
     )
 }
 
+#[allow(dead_code)] // thin wrapper; production uses `_for_kind`, tests use this default
 pub fn build_generation_user_prompt(
     sources: &[ResearchSource],
     recent_posted_texts: &[String],
     count: u32,
     style: DraftStyle,
+) -> String {
+    build_generation_user_prompt_for_kind(
+        sources,
+        recent_posted_texts,
+        count,
+        style,
+        GenerationKind::StandalonePost,
+    )
+}
+
+pub fn build_generation_user_prompt_for_kind(
+    sources: &[ResearchSource],
+    recent_posted_texts: &[String],
+    count: u32,
+    style: DraftStyle,
+    kind: GenerationKind,
 ) -> String {
     let user_provided = sources_are_user_provided(sources);
     let mut source_lines = Vec::new();
@@ -472,7 +582,13 @@ pub fn build_generation_user_prompt(
             .join("\n")
     };
 
-    let custom_source_note = if user_provided {
+    let custom_source_note = if kind.is_reply() {
+        "\nREPLY TARGET (MANDATORY):\n\
+         - The Sources list is the *parent post or content* the user wants to reply to.\n\
+         - Write a reply that engages that specific content. Do not invent a different parent topic.\n\
+         - Do NOT refuse even if the parent is political, controversial, or unrelated to Musk companies.\n\
+         - Prefer X post URLs when available so the draft can be posted as a threaded reply.\n"
+    } else if user_provided {
         "\nUSER-REQUESTED INPUT (MANDATORY - HIGH FIDELITY TO PROVIDED CONTENT):\n\
          - The user explicitly pasted this link or typed this topic because they want a draft post *based directly on this specific content*.\n\
          - You MUST create a post whose core idea, main points, story, and claims come from the actual text the user provided. Do not substitute a different narrative or generate a post on a tangential topic.\n\
@@ -484,38 +600,94 @@ pub fn build_generation_user_prompt(
         ""
     };
 
-    let framing_requirement = if user_provided {
+    let framing_requirement = if user_provided || kind.is_reply() {
         "- Stay factual and on-topic to the source. Use bullish framing only when the source is about Musk companies."
     } else {
         "- Frame constructively and bullishly toward Elon and his companies while staying factual."
     };
 
-    let length_requirement = "- LENGTH + CONTEXT + DUAL BAR: Aim for 220-279 characters. Include 3-5 specific named facts from the sources plus background, what happened, and why it matters so a zero-context reader gets the full story. Maximize information density AND a useful takeaway in the same post — no pure fact-dumps and no insight-only hot takes. Do not write ultra-compressed shorthand or bare headline rewrites.";
+    let length_requirement = if kind.is_reply() {
+        "- LENGTH (REPLY): Prefer 80–220 characters when a tight reply is stronger; max 280. Add value without restating the whole parent. Include at least one concrete fact or non-obvious takeaway grounded in the parent."
+    } else {
+        "- LENGTH + CONTEXT + DUAL BAR: Aim for 220-279 characters. Include 3-5 specific named facts from the sources plus background, what happened, and why it matters so a zero-context reader gets the full story. Maximize information density AND a useful takeaway in the same post — no pure fact-dumps and no insight-only hot takes. Do not write ultra-compressed shorthand or bare headline rewrites."
+    };
 
-    let engagement_requirement = "- ENGAGEMENT + VIEWS + 2026 X RANKING: Open with a scroll-stopping first-line hook; write in human conversational voice (contractions, natural rhythm); include at least one quotable/share-worthy bookmark-worthy line; end with a conversation-forcing question, sharp implication, or debate-worthy claim (no engagement bait); zero external URLs in the post body; 0 hashtags preferred (at most one). Optimize for high engagement and views on X without relaxing the specific-facts or dual-bar rules. Facts are never relaxed for virality.";
+    let engagement_requirement = if kind.is_reply() {
+        "- ENGAGEMENT (REPLY): React to a specific point in the parent; human conversational voice; zero external URLs; 0 hashtags preferred (at most one). Advance the thread so others want to keep replying. Facts are never relaxed for virality."
+    } else {
+        "- ENGAGEMENT + VIEWS + 2026 X RANKING: Open with a scroll-stopping first-line hook; write in human conversational voice (contractions, natural rhythm); include at least one quotable/share-worthy bookmark-worthy line; end with a conversation-forcing question, sharp implication, or debate-worthy claim (no engagement bait); zero external URLs in the post body; 0 hashtags preferred (at most one). Optimize for high engagement and views on X without relaxing the specific-facts or dual-bar rules. Facts are never relaxed for virality."
+    };
 
-    let recency_requirement = "- RECENCY: Research subjects are intended to be hours-old (prefer same-day / last few hours) and at most a few days old. Write as timely commentary on a fresh development — not evergreen history or week-old rehash. If multiple sources are listed, lean on the freshest dated ones.";
+    let recency_requirement = if kind.is_reply() {
+        "- RECENCY: Treat the parent as a live conversation. Write as a timely reply, not an evergreen essay."
+    } else {
+        "- RECENCY: Research subjects are intended to be hours-old (prefer same-day / last few hours) and at most a few days old. Write as timely commentary on a fresh development — not evergreen history or week-old rehash. If multiple sources are listed, lean on the freshest dated ones."
+    };
 
-    let style_requirement = match style {
-        DraftStyle::Insight => {
-            "- DUAL BAR: Pack 3-5 specific named facts from the sources AND add genuine insight (implications, read-through, what the market or observers miss) — never just repeat or paraphrase the source. Transform those facts into a non-obvious but grounded observation; re-express in fresh language (see style rules for anti-phrasing and the 'STRUCTURE FOR STANDALONE INSIGHT POSTS' section — encompassing arc with scene-setting for any external event/rating, specific facts/numbers from the source, and optional 1 supporting general-knowledge point)."
+    let style_requirement = if kind.is_reply() {
+        match style {
+            DraftStyle::Insight => {
+                "- REPLY + INSIGHT: Add a non-obvious implication or missing context tied to the parent — never just agree or restate."
+            }
+            DraftStyle::Informative => {
+                "- REPLY + INFORMATIVE: Clarify or extend one useful fact from the parent without dumping a full news rewrite."
+            }
+            DraftStyle::Funny => {
+                "- REPLY + FUNNY: A witty, lighthearted reply anchored to the parent's content — not a random joke."
+            }
+            DraftStyle::Witty => {
+                "- REPLY + WITTY: Sharp one-liner or clever angle that only works because of the parent."
+            }
+            DraftStyle::Meme => {
+                "- REPLY + MEME: Meme-caption energy as a reply to the parent, still on-topic."
+            }
         }
-        DraftStyle::Informative => {
-            "- Make each post clear, factual, and useful — pack multiple specific named facts, explain background, what happened, and concrete why-it-matters without heavy analysis or vague summary language."
-        }
-        DraftStyle::Funny => {
-            "- Make each post genuinely funny while staying anchored to the source story."
-        }
-        DraftStyle::Witty => "- Make each post sharp, clever, and quotable.",
-        DraftStyle::Meme => {
-            "- Write each post as a viral meme caption tied to the source story."
+    } else {
+        match style {
+            DraftStyle::Insight => {
+                "- DUAL BAR: Pack 3-5 specific named facts from the sources AND add genuine insight (implications, read-through, what the market or observers miss) — never just repeat or paraphrase the source. Transform those facts into a non-obvious but grounded observation; re-express in fresh language (see style rules for anti-phrasing and the 'STRUCTURE FOR STANDALONE INSIGHT POSTS' section — encompassing arc with scene-setting for any external event/rating, specific facts/numbers from the source, and optional 1 supporting general-knowledge point)."
+            }
+            DraftStyle::Informative => {
+                "- Make each post clear, factual, and useful — pack multiple specific named facts, explain background, what happened, and concrete why-it-matters without heavy analysis or vague summary language."
+            }
+            DraftStyle::Funny => {
+                "- Make each post genuinely funny while staying anchored to the source story."
+            }
+            DraftStyle::Witty => "- Make each post sharp, clever, and quotable.",
+            DraftStyle::Meme => {
+                "- Write each post as a viral meme caption tied to the source story."
+            }
         }
     };
 
-    let attribution_requirement = "- ATTRIBUTION AND SUPPORTING FACTS: Strictly follow the ATTRIBUTION POLICY + SUPPORTING FACTS FROM KNOWLEDGE in the system prompt. Only use source attribution for specific, non-general information directly from the source. Use your general knowledge to add supporting facts/background that make the post more interesting and self-contained (without fabricating recent details).";
+    let attribution_requirement = if kind.is_reply() {
+        "- ATTRIBUTION: You are replying *to* the parent — do not re-attribute the whole parent with \"As @X noted\". Only cite if you pull an extra specific claim; general knowledge can support without forced attribution."
+    } else {
+        "- ATTRIBUTION AND SUPPORTING FACTS: Strictly follow the ATTRIBUTION POLICY + SUPPORTING FACTS FROM KNOWLEDGE in the system prompt. Only use source attribution for specific, non-general information directly from the source. Use your general knowledge to add supporting facts/background that make the post more interesting and self-contained (without fabricating recent details)."
+    };
+
+    let generate_label = if kind.is_reply() {
+        format!(
+            "Generate exactly {} draft *reply*(ies) in {} style to the parent content below.",
+            count,
+            style.as_str()
+        )
+    } else {
+        format!(
+            "Generate exactly {} draft post(s) in {} style from these research sources.",
+            count,
+            style.as_str()
+        )
+    };
+
+    let sources_header = if kind.is_reply() {
+        "## Parent post / reply target"
+    } else {
+        "## Sources"
+    };
 
     format!(
-        "Generate exactly {} draft post(s) in {} style from these research sources.{custom_source_note}\n\
+        "{generate_label}{custom_source_note}\n\
          Requirements for each draft:\n\
          {}\n\
          {}\n\
@@ -525,10 +697,8 @@ pub fn build_generation_user_prompt(
          {}\n\
          - Include at most one cashtag ($TSLA or $SPCX) when stock-relevant.\n\
          - If the Sources list below contains Related/similar coverage items (after the main research sources), use them only for additional concrete facts and details. primary_source_index must still refer to one of the main sources (the first N items).\n\n\
-         ## Sources\n{}\n\n\
+         {sources_header}\n{}\n\n\
          ## User's recent posted drafts (DO NOT repeat these angles)\n{}\n",
-        count,
-        style.as_str(),
         style_requirement,
         length_requirement,
         engagement_requirement,
@@ -537,8 +707,20 @@ pub fn build_generation_user_prompt(
         attribution_requirement,
         source_lines.join("\n"),
         recent,
+        generate_label = generate_label,
         custom_source_note = custom_source_note,
+        sources_header = sources_header,
     )
+}
+
+/// Resolve the X tweet id this draft should reply to, if known.
+pub fn reply_target_tweet_id(source: &ResearchSource) -> Option<String> {
+    source
+        .original_id
+        .as_ref()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty() && s.chars().all(|c| c.is_ascii_digit()))
+        .or_else(|| extract_tweet_id_from_url(&source.url))
 }
 
 fn generation_temperature(style: DraftStyle) -> f64 {
@@ -859,6 +1041,7 @@ pub async fn prepare_sources_for_generation(original: &[ResearchSource]) -> Vec<
     effective
 }
 
+#[allow(dead_code)] // thin wrapper; production uses `_kind` via generate_drafts_from_sources_db
 pub async fn call_grok_for_drafts(
     xai_api_key: &str,
     model: &str,
@@ -866,6 +1049,27 @@ pub async fn call_grok_for_drafts(
     recent_posted_texts: &[String],
     count: u32,
     style: DraftStyle,
+) -> Result<Vec<GeneratedDraftItem>, String> {
+    call_grok_for_drafts_kind(
+        xai_api_key,
+        model,
+        sources,
+        recent_posted_texts,
+        count,
+        style,
+        GenerationKind::StandalonePost,
+    )
+    .await
+}
+
+pub async fn call_grok_for_drafts_kind(
+    xai_api_key: &str,
+    model: &str,
+    sources: &[ResearchSource],
+    recent_posted_texts: &[String],
+    count: u32,
+    style: DraftStyle,
+    kind: GenerationKind,
 ) -> Result<Vec<GeneratedDraftItem>, String> {
     let client = Client::builder()
         .timeout(Duration::from_secs(120))
@@ -876,14 +1080,14 @@ pub async fn call_grok_for_drafts(
     // stories (from the current batch) when the primary does not contain enough concrete
     // facts on its own. This implements "if the article or headline doesn't have enough
     // information then grok should get more" and "don't base the draft on a single post
-    // but a group of similar stories".
+    // but a group of similar stories". For replies, still enrich so the model has substance.
     let effective_sources = prepare_sources_for_generation(sources).await;
 
     let body = serde_json::json!({
         "model": model,
         "input": [
-            {"role": "system", "content": build_generation_system_prompt(style, &effective_sources)},
-            {"role": "user", "content": build_generation_user_prompt(&effective_sources, recent_posted_texts, count, style)}
+            {"role": "system", "content": build_generation_system_prompt_for_kind(style, &effective_sources, kind)},
+            {"role": "user", "content": build_generation_user_prompt_for_kind(&effective_sources, recent_posted_texts, count, style, kind)}
         ],
         "temperature": generation_temperature(style),
         "max_output_tokens": 4000
@@ -968,11 +1172,48 @@ pub async fn generate_drafts_from_sources_db(
     count: u32,
     style: DraftStyle,
 ) -> Result<Vec<Draft>, String> {
+    generate_drafts_from_sources_db_kind(
+        db,
+        app_data_dir,
+        sources,
+        xai_api_key,
+        model,
+        count,
+        style,
+        GenerationKind::StandalonePost,
+    )
+    .await
+}
+
+pub async fn generate_drafts_from_sources_db_kind(
+    db: &DbPool,
+    app_data_dir: Option<&Path>,
+    sources: &[ResearchSource],
+    xai_api_key: &str,
+    model: &str,
+    count: u32,
+    style: DraftStyle,
+    kind: GenerationKind,
+) -> Result<Vec<Draft>, String> {
     let recent = get_drafts_db(db, Some("posted".to_string())).await?;
     let recent_texts: Vec<String> = recent.into_iter().take(8).map(|d| d.text).collect();
 
-    let generated =
-        call_grok_for_drafts(xai_api_key, model, sources, &recent_texts, count, style).await?;
+    let generated = call_grok_for_drafts_kind(
+        xai_api_key,
+        model,
+        sources,
+        &recent_texts,
+        count,
+        style,
+        kind,
+    )
+    .await?;
+
+    let reply_to = if kind.is_reply() {
+        sources.first().and_then(reply_target_tweet_id)
+    } else {
+        None
+    };
 
     let mut drafts = Vec::new();
     for item in generated {
@@ -980,12 +1221,22 @@ pub async fn generate_drafts_from_sources_db(
         let finalized = finalize_draft_text(&item.text, &draft_sources);
         let text = crate::x_media::normalize_source_mentions(&finalized, &draft_sources);
         let primary = crate::x_media::match_primary_source(&text, &draft_sources);
-        let image_url = primary.and_then(|s| s.media_url.clone());
+        // Replies rarely need auto-attached media from the parent; keep none unless meme style later.
+        let image_url = if kind.is_reply() {
+            None
+        } else {
+            primary.and_then(|s| s.media_url.clone())
+        };
 
         let sources_json = serde_json::to_string(&draft_sources).map_err(|e| e.to_string())?;
 
         if let Some(r) = &item.rationale {
-            log::info!("Generated draft with rationale: {} | text: {}", r, text);
+            log::info!(
+                "Generated {} draft with rationale: {} | text: {}",
+                kind.as_str(),
+                r,
+                text
+            );
         }
 
         let input = CreateDraftInput {
@@ -993,6 +1244,7 @@ pub async fn generate_drafts_from_sources_db(
             sources_json,
             image_url,
             generation_rationale: item.rationale.clone(),
+            in_reply_to_tweet_id: reply_to.clone(),
         };
         let mut draft = create_draft_db(db, input).await?;
 
@@ -1103,6 +1355,92 @@ mod tests {
             source_type: "rss".into(),
             ..custom_political_x_source()
         }]));
+    }
+
+    #[test]
+    fn test_reply_target_tweet_id_from_original_id_and_url() {
+        let from_original = ResearchSource {
+            id: "1".into(),
+            title: "t".into(),
+            content: "c".into(),
+            url: "https://x.com/user/status/999".into(),
+            published_at: None,
+            source_name: "@user".into(),
+            source_type: "custom_x".into(),
+            retweet_count: None,
+            like_count: None,
+            reply_count: None,
+            quote_count: None,
+            original_id: Some("1234567890123456789".into()),
+            media_url: None,
+            used_at: None,
+        };
+        assert_eq!(
+            reply_target_tweet_id(&from_original).as_deref(),
+            Some("1234567890123456789")
+        );
+
+        let from_url_only = ResearchSource {
+            original_id: None,
+            url: "https://twitter.com/elonmusk/status/111222333".into(),
+            ..from_original.clone()
+        };
+        assert_eq!(
+            reply_target_tweet_id(&from_url_only).as_deref(),
+            Some("111222333")
+        );
+
+        let no_id = ResearchSource {
+            original_id: None,
+            url: "https://teslarati.com/story".into(),
+            source_type: "custom_article".into(),
+            ..from_original
+        };
+        assert!(reply_target_tweet_id(&no_id).is_none());
+    }
+
+    #[test]
+    fn test_reply_system_and_user_prompts_use_reply_mode() {
+        let sources = vec![ResearchSource {
+            id: "1".into(),
+            title: "Starship catch".into(),
+            content: "Booster caught again — cadence path is opening.".into(),
+            url: "https://x.com/SawyerMerritt/status/555".into(),
+            published_at: None,
+            source_name: "@SawyerMerritt".into(),
+            source_type: "custom_x".into(),
+            retweet_count: None,
+            like_count: None,
+            reply_count: None,
+            quote_count: None,
+            original_id: Some("555".into()),
+            media_url: None,
+            used_at: None,
+        }];
+
+        let sys = build_generation_system_prompt_for_kind(
+            DraftStyle::Insight,
+            &sources,
+            GenerationKind::Reply,
+        );
+        assert!(sys.contains("REPLY MODE"));
+        assert!(sys.contains("posted as a reply"));
+        assert!(sys.contains("Do NOT restate the entire parent"));
+        assert!(sys.contains("prefer 80–220") || sys.contains("80–220"));
+        assert!(!sys.contains("STRUCTURE FOR STANDALONE INSIGHT POSTS"));
+
+        let user = build_generation_user_prompt_for_kind(
+            &sources,
+            &[],
+            1,
+            DraftStyle::Insight,
+            GenerationKind::Reply,
+        );
+        assert!(user.contains("draft *reply*"));
+        assert!(user.contains("REPLY TARGET") || user.contains("Parent post"));
+        assert!(user.contains("LENGTH (REPLY)"));
+        assert!(user.contains("ENGAGEMENT (REPLY)"));
+        assert!(user.contains("Facts are never relaxed for virality"));
     }
 
     #[test]

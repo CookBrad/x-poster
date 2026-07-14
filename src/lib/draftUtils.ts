@@ -50,11 +50,16 @@ export function formatSourceLabels(draft: Draft): string {
   return parseSources(draft).map(formatSourceLabel).filter(Boolean).join(', ')
 }
 
-export function buildXPostUrl(xPostId: string | null): string | null {
+export function buildXPostUrl(xPostId: string | null | undefined): string | null {
   if (!xPostId || xPostId.startsWith(SIMULATED_POST_ID_PREFIX)) {
     return null
   }
   return `${X_STATUS_URL_BASE}${xPostId}`
+}
+
+/** Whether this draft is intended to post as a reply to another tweet. */
+export function isReplyDraft(draft: Draft): boolean {
+  return Boolean(draft.in_reply_to_tweet_id?.trim())
 }
 
 export function formatDraftTimestamp(draft: Draft): string {

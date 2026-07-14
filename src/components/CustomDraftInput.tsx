@@ -4,8 +4,10 @@ import { DRAFT_STYLE, type DraftStyle } from '../lib/constants'
 export interface CustomDraftInputProps {
   value: string
   onChange: (value: string) => void
-  onGenerate: () => void
-  generating?: boolean
+  onGeneratePost: () => void
+  onGenerateReply: () => void
+  generatingPost?: boolean
+  generatingReply?: boolean
   disabled?: boolean
   hasXaiKey?: boolean
   draftStyle?: DraftStyle
@@ -14,19 +16,28 @@ export interface CustomDraftInputProps {
 export function CustomDraftInput({
   value,
   onChange,
-  onGenerate,
-  generating = false,
+  onGeneratePost,
+  onGenerateReply,
+  generatingPost = false,
+  generatingReply = false,
   disabled = false,
   hasXaiKey = false,
   draftStyle = DRAFT_STYLE.insight,
 }: CustomDraftInputProps) {
   const trimmed = value.trim()
-  const generateDisabled = disabled || generating || !hasXaiKey || trimmed.length === 0
+  const busy = generatingPost || generatingReply
+  const baseDisabled = disabled || busy || !hasXaiKey || trimmed.length === 0
+
+  const emptyHint = !hasXaiKey
+    ? 'xAI key required'
+    : trimmed.length === 0
+      ? 'Enter a link, X post URL, or topic'
+      : undefined
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault()
-    if (!generateDisabled) {
-      onGenerate()
+    if (!baseDisabled) {
+      onGeneratePost()
     }
   }
 
@@ -36,46 +47,63 @@ export function CustomDraftInput({
         <div>
           <h3 className="font-semibold text-base">Generate from a link or topic</h3>
           <p className="text-xs opacity-70 mt-1">
-            Paste an article or X post URL, or type a topic — Grok will write one{' '}
-            {draftStyle === DRAFT_STYLE.meme ? 'meme-style ' : ''}
-            draft post using the selected post style.
+            Paste an article URL, X post URL, or type a topic. <strong>Generate Post</strong> writes a
+            standalone draft; <strong>Generate Reply</strong> writes a reply (best with an X status URL
+            so Approve &amp; Post can thread it). Style:{' '}
+            {draftStyle === DRAFT_STYLE.meme ? 'meme' : draftStyle}.
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-2">
-          <label className="form-control flex-1">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-2">
+          <label className="form-control w-full">
             <textarea
               className="textarea textarea-bordered textarea-sm w-full min-h-[4.5rem]"
-              placeholder="https://example.com/story or Starship booster catch milestone"
+              placeholder="https://x.com/user/status/… · https://example.com/story · or a topic"
               value={value}
               onChange={(event) => onChange(event.target.value)}
-              disabled={disabled || generating}
+              disabled={disabled || busy}
               data-testid="custom-draft-input"
             />
           </label>
 
-          <button
-            type="submit"
-            className="btn btn-sm btn-primary sm:self-end"
-            disabled={generateDisabled}
-            title={
-              !hasXaiKey
-                ? 'xAI key required'
-                : trimmed.length === 0
-                  ? 'Enter a link or topic'
-                  : 'Generate one post from this input'
-            }
-            data-testid="custom-draft-generate"
-          >
-            {generating ? (
-              <>
-                <span className="loading loading-spinner loading-xs" />
-                Generating…
-              </>
-            ) : (
-              'Generate Post'
-            )}
-          </button>
+          <div className="flex flex-wrap gap-2 justify-end">
+            <button
+              type="submit"
+              className="btn btn-sm btn-primary"
+              disabled={baseDisabled}
+              title={emptyHint ?? 'Generate one standalone post from this input'}
+              data-testid="custom-draft-generate"
+            >
+              {generatingPost ? (
+                <>
+                  <span className="loading loading-spinner loading-xs" />
+                  Generating…
+                </>
+              ) : (
+                'Generate Post'
+              )}
+            </button>
+
+            <button
+              type="button"
+              className="btn btn-sm btn-secondary"
+              disabled={baseDisabled}
+              title={emptyHint ?? 'Generate one reply from this input'}
+              onClick={() => {
+                if (!baseDisabled) onGenerateReply()
+              }}
+              data-testid="custom-reply-generate"
+            >
+              {generatingReply ? (
+                <>
+                  <span className="loading loading-spinner loading-xs" />
+                  Generating…
+                </>
+              ) : (
+                'Generate Reply'
+              )}
+            </button>
+          </div>
         </form>
       </div>
     </div>

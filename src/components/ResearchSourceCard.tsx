@@ -11,8 +11,10 @@ export interface ResearchSourceCardProps {
   dateLabel: string
   canGenerate?: boolean
   isUsed?: boolean
-  generating?: boolean
+  generatingPost?: boolean
+  generatingReply?: boolean
   onGeneratePost?: (sourceId: string) => void
+  onGenerateReply?: (sourceId: string) => void
 }
 
 export function ResearchSourceCard({
@@ -25,10 +27,13 @@ export function ResearchSourceCard({
   dateLabel,
   canGenerate = false,
   isUsed = false,
-  generating = false,
+  generatingPost = false,
+  generatingReply = false,
   onGeneratePost,
+  onGenerateReply,
 }: ResearchSourceCardProps) {
-  const allowGenerate = canGenerate && !isUsed
+  const generating = generatingPost || generatingReply
+  const showActions = canGenerate && !isUsed
   const displaySourceName =
     sourceType === RESEARCH_SOURCE_TYPE.rss
       ? `source: ${sourceName.replace(/^@/, '')}`
@@ -36,23 +41,9 @@ export function ResearchSourceCard({
         ? sourceName
         : `@${sourceName.replace(/^@/, '')}`
 
-  const handleGenerate = () => {
-    onGeneratePost?.(sourceId)
-  }
-
   return (
     <div
-      className={`card bg-base-100 shadow-sm ${allowGenerate ? 'cursor-pointer hover:shadow-md transition-shadow' : ''} ${isUsed ? 'opacity-70' : ''}`}
-      onClick={allowGenerate && !generating ? handleGenerate : undefined}
-      onKeyDown={(event) => {
-        if (!allowGenerate || generating || !onGeneratePost) return
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault()
-          handleGenerate()
-        }
-      }}
-      role={allowGenerate ? 'button' : undefined}
-      tabIndex={allowGenerate ? 0 : undefined}
+      className={`card bg-base-100 shadow-sm ${isUsed ? 'opacity-70' : ''}`}
       data-testid={`research-source-card-${sourceId}`}
     >
       <div className="card-body py-3">
@@ -98,19 +89,25 @@ export function ResearchSourceCard({
           </div>
         )}
 
-        {canGenerate && !isUsed && (
-          <div className="card-actions justify-end mt-2">
+        {showActions && (
+          <div className="card-actions justify-end mt-2 gap-1">
             <button
               type="button"
               className="btn btn-primary btn-xs"
-              onClick={(event) => {
-                event.stopPropagation()
-                handleGenerate()
-              }}
+              onClick={() => onGeneratePost?.(sourceId)}
               disabled={generating}
               data-testid={`generate-post-${sourceId}`}
             >
-              {generating ? 'Generating…' : 'Generate Post'}
+              {generatingPost ? 'Generating…' : 'Generate Post'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary btn-xs"
+              onClick={() => onGenerateReply?.(sourceId)}
+              disabled={generating}
+              data-testid={`generate-reply-${sourceId}`}
+            >
+              {generatingReply ? 'Generating…' : 'Generate Reply'}
             </button>
           </div>
         )}

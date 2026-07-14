@@ -17,6 +17,8 @@ export interface Draft {
   posted_at: string | null
   x_post_id: string | null
   generation_rationale?: string | null
+  /** When set, Approve & Post publishes as a reply to this tweet id. */
+  in_reply_to_tweet_id?: string | null
 }
 
 export interface DraftSource {
@@ -174,6 +176,20 @@ export async function generateDraftFromInput(
   style: DraftStyle = DEFAULT_DRAFT_STYLE
 ): Promise<Draft[]> {
   return invoke<Draft[]>('generate_draft_from_input', { input, style });
+}
+
+export async function generateReplyFromInput(
+  input: string,
+  style: DraftStyle = DEFAULT_DRAFT_STYLE
+): Promise<Draft[]> {
+  return invoke<Draft[]>('generate_reply_from_input', { input, style });
+}
+
+export async function generateReplyFromSource(
+  sourceId: string,
+  style: DraftStyle = DEFAULT_DRAFT_STYLE
+): Promise<Draft[]> {
+  return invoke<Draft[]>('generate_reply_from_source', { sourceId, style });
 }
 
 export async function postDraftToX(id: string): Promise<Draft> {

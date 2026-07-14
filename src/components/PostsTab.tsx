@@ -345,12 +345,20 @@ function DraftCard({
   onImageResolved,
 }: DraftCardProps) {
   const xUrl = buildXPostUrl(draft.x_post_id)
+  const replyToUrl = buildXPostUrl(draft.in_reply_to_tweet_id)
 
   return (
     <div className="card bg-base-100 shadow draft-card" data-testid={`draft-card-${draft.id}`}>
       <div className="card-body">
         <div className="flex justify-between text-xs opacity-70 mb-1">
-          <span className="badge badge-sm">{draft.status}</span>
+          <span className="flex items-center gap-1 flex-wrap">
+            <span className="badge badge-sm">{draft.status}</span>
+            {draft.in_reply_to_tweet_id && (
+              <span className="badge badge-sm badge-secondary" data-testid={`reply-badge-${draft.id}`}>
+                reply
+              </span>
+            )}
+          </span>
           <span>
             {formatDraftTimestamp(draft)}
             {isPendingDraft(draft) && (
@@ -360,6 +368,27 @@ function DraftCard({
             )}
           </span>
         </div>
+
+        {replyToUrl && (
+          <p className="text-xs opacity-70 mb-1">
+            Replies to{' '}
+            <span
+              className="link link-primary cursor-pointer"
+              title={replyToUrl}
+              onClick={async (e) => {
+                e.stopPropagation()
+                try {
+                  await openUrl(replyToUrl)
+                } catch {
+                  window.open(replyToUrl, '_blank', 'noopener,noreferrer')
+                }
+              }}
+            >
+              parent post
+            </span>
+            <span className="opacity-50"> · API may require prior engagement from that author</span>
+          </p>
+        )}
 
         <p className="font-medium whitespace-pre-wrap">{draft.text}</p>
 

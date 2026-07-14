@@ -4,6 +4,7 @@ import {
   countDraftsByStatus,
   formatSourceLabels,
   isPendingDraft,
+  isReplyDraft,
   getCharCountClass,
   formatCharCount,
 } from './draftUtils'
@@ -45,6 +46,12 @@ describe('draftUtils', () => {
     expect(buildXPostUrl('12345')).toBe('https://x.com/i/web/status/12345')
     expect(buildXPostUrl('sim_12345')).toBeNull()
     expect(buildXPostUrl(null)).toBeNull()
+  })
+
+  it('identifies reply drafts via in_reply_to_tweet_id', () => {
+    expect(isReplyDraft(baseDraft)).toBe(false)
+    expect(isReplyDraft({ ...baseDraft, in_reply_to_tweet_id: '123' })).toBe(true)
+    expect(isReplyDraft({ ...baseDraft, in_reply_to_tweet_id: '  ' })).toBe(false)
   })
 
   it('identifies pending drafts', () => {

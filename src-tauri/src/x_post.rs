@@ -176,17 +176,69 @@ fn format_x_api_error(status: reqwest::StatusCode, body: &str) -> String {
             );
         }
 
+        // X API anti-spam (2026): API replies to other users often fail even when the web UI allows them.
+        // This is NOT the same as a "protected" account — protected posts use a different error.
+        let detail_lower = detail.to_lowercase();
+        if detail_lower.contains("not been mentioned")
+            || detail_lower.contains("otherwise engaged by the author")
+            || (detail_lower.contains("reply to this conversation is not allowed")
+                && status.as_u16() == 403)
+        {
+            return format!(
+                "X blocked this *API* reply (not a protected-account issue). \
+                Since mid-2026, X limits app/API replies to posts where the author has already \
+                mentioned or engaged with your account — even when the same reply works from the X website. \
+                Your draft is still pending. Open the parent post on X and paste the draft text to reply manually. \
+                (Standalone posts and replies to people who have engaged you still work via the API.) \
+                Details: {}",
+                detail
+            );
+        }
+
         return format!("X API error ({}): {}", status, detail);
     }
 
     format!("X API error ({}): {}", status, body)
 }
 
+/// Ensure a reply text includes `@handle` for the parent author (web clients often do this).
+/// Truncates to 280 chars if needed. No-op when author is unknown or already leading.
+pub fn ensure_reply_author_mention(text: &str, author: Option<&str>) -> String {
+    let handle = author
+        .map(|a| a.trim().trim_start_matches('@').trim())
+        .filter(|h| !h.is_empty() && h.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'));
+    let Some(handle) = handle else {
+        return text.to_string();
+    };
+
+    let trimmed = text.trim();
+    let prefix = format!("@{}", handle);
+    if trimmed.to_lowercase().starts_with(&prefix.to_lowercase()) {
+        return trimmed.to_string();
+    }
+
+    let with_mention = format!("{} {}", prefix, trimmed);
+    if with_mention.chars().count() <= 280 {
+        return with_mention;
+    }
+
+    // Prefer keeping the mention; trim body to fit.
+    let mention_overhead = prefix.chars().count() + 1; // "@handle "
+    let max_body = 280_usize.saturating_sub(mention_overhead);
+    let body: String = trimmed.chars().take(max_body).collect();
+    format!("{} {}", prefix, body)
+}
+
 /// Post a text tweet via X API v2 (OAuth 1.0a user context).
+/// When `in_reply_to_tweet_id` is set, posts as a reply to that tweet.
+/// `reply_author` is optional `@handle` of the parent author — prepended when missing so the
+/// reply matches web-client mention behavior (does not bypass X's API engagement gate).
 pub async fn post_tweet(
     creds: &XCredentials,
     text: &str,
     media_ids: &[String],
+    in_reply_to_tweet_id: Option<&str>,
+    reply_author: Option<&str>,
 ) -> Result<String, String> {
     let url = "https://api.twitter.com/2/tweets";
     let auth = oauth_header("POST", url, creds, &BTreeMap::new())?;
@@ -196,14 +248,34 @@ pub async fn post_tweet(
         .build()
         .map_err(|e| e.to_string())?;
 
-    let body = if media_ids.is_empty() {
-        serde_json::json!({ "text": text })
+    let reply_to = in_reply_to_tweet_id.filter(|id| !id.is_empty());
+    let post_text = if reply_to.is_some() {
+        ensure_reply_author_mention(text, reply_author)
+    } else {
+        text.to_string()
+    };
+
+    if let Some(id) = reply_to {
+        log::info!(
+            "post_tweet: reply to tweet_id={}, author={:?}, text_len={}",
+            id,
+            reply_author,
+            post_text.chars().count()
+        );
+    }
+
+    let mut body = if media_ids.is_empty() {
+        serde_json::json!({ "text": post_text })
     } else {
         serde_json::json!({
-            "text": text,
+            "text": post_text,
             "media": { "media_ids": media_ids }
         })
     };
+
+    if let Some(reply_to_id) = reply_to {
+        body["reply"] = serde_json::json!({ "in_reply_to_tweet_id": reply_to_id });
+    }
 
     let res = client
         .post(url)
@@ -317,5 +389,34 @@ mod tests {
         let msg = format_x_api_error(reqwest::StatusCode::FORBIDDEN, body);
         assert!(msg.contains("Read and write"));
         assert!(msg.contains("regenerate Access Token"));
+    }
+
+    #[test]
+    fn test_format_x_api_error_reply_engagement_gate() {
+        let body = r#"{"title":"Forbidden","status":403,"detail":"Reply to this conversation is not allowed because you have not been mentioned or otherwise engaged by the author of the post you are replying to.","type":"about:blank"}"#;
+        let msg = format_x_api_error(reqwest::StatusCode::FORBIDDEN, body);
+        assert!(msg.contains("API"), "should clarify API vs web: {}", msg);
+        assert!(msg.contains("pending") || msg.contains("manually"), "{}", msg);
+        assert!(!msg.to_lowercase().contains("protected account"));
+    }
+
+    #[test]
+    fn test_ensure_reply_author_mention() {
+        assert_eq!(
+            ensure_reply_author_mention("Great point on FSD.", Some("@SawyerMerritt")),
+            "@SawyerMerritt Great point on FSD."
+        );
+        assert_eq!(
+            ensure_reply_author_mention("@SawyerMerritt already here", Some("SawyerMerritt")),
+            "@SawyerMerritt already here"
+        );
+        assert_eq!(
+            ensure_reply_author_mention("no author", None),
+            "no author"
+        );
+        let long = "x".repeat(270);
+        let out = ensure_reply_author_mention(&long, Some("elonmusk"));
+        assert!(out.starts_with("@elonmusk "));
+        assert!(out.chars().count() <= 280);
     }
 }

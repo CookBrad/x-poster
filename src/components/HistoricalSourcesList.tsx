@@ -7,8 +7,9 @@ import { formatResearchSourceDate, ResearchSourceCard } from './ResearchSourceCa
 interface HistoricalSourcesListProps {
   reloadToken: number
   hasXaiKey?: boolean
-  generatingSourceId?: string | null
+  generatingSource?: { id: string; kind: 'post' | 'reply' } | null
   onGenerateFromSource?: (sourceId: string) => void
+  onGenerateReplyFromSource?: (sourceId: string) => void
 }
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const
@@ -16,8 +17,9 @@ const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const
 export function HistoricalSourcesList({
   reloadToken,
   hasXaiKey = false,
-  generatingSourceId = null,
+  generatingSource = null,
   onGenerateFromSource,
+  onGenerateReplyFromSource,
 }: HistoricalSourcesListProps) {
   const [allSources, setAllSources] = useState<HistoricalResearchSource[]>([])
   const [searchTerm, setSearchTerm] = useState('')
@@ -184,8 +186,14 @@ export function HistoricalSourcesList({
               dateLabel={formatResearchSourceDate(source.published_at, source.run_at)}
               canGenerate={hasXaiKey}
               isUsed={isResearchSourceUsed(source)}
-              generating={generatingSourceId === source.id}
+              generatingPost={
+                generatingSource?.id === source.id && generatingSource.kind === 'post'
+              }
+              generatingReply={
+                generatingSource?.id === source.id && generatingSource.kind === 'reply'
+              }
               onGeneratePost={onGenerateFromSource}
+              onGenerateReply={onGenerateReplyFromSource}
             />
           ))}
         </div>

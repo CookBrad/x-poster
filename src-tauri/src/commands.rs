@@ -22,6 +22,8 @@ pub struct Draft {
     pub posted_at: Option<String>,
     pub x_post_id: Option<String>,
     pub generation_rationale: Option<String>,
+    /// When set, Approve & Post publishes this draft as a reply to that tweet id.
+    pub in_reply_to_tweet_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -30,6 +32,8 @@ pub struct CreateDraftInput {
     pub sources_json: String,
     pub image_url: Option<String>,
     pub generation_rationale: Option<String>,
+    #[serde(default)]
+    pub in_reply_to_tweet_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -65,12 +69,13 @@ pub async fn create_draft_db(db: &DbPool, input: CreateDraftInput) -> Result<Dra
         posted_at: None,
         x_post_id: None,
         generation_rationale: input.generation_rationale,
+        in_reply_to_tweet_id: input.in_reply_to_tweet_id,
     };
 
     sqlx::query(
         r#"
-        INSERT INTO drafts (id, text, sources_json, image_url, status, created_at, updated_at, generation_rationale)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO drafts (id, text, sources_json, image_url, status, created_at, updated_at, generation_rationale, in_reply_to_tweet_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#
     )
     .bind(&draft.id)
@@ -81,6 +86,7 @@ pub async fn create_draft_db(db: &DbPool, input: CreateDraftInput) -> Result<Dra
     .bind(&draft.created_at)
     .bind(&draft.updated_at)
     .bind(&draft.generation_rationale)
+    .bind(&draft.in_reply_to_tweet_id)
     .execute(db)
     .await
     .map_err(|e| format!("Failed to create draft: {}", e))?;
@@ -317,6 +323,7 @@ mod tests {
             sources_json: r#"[{"type":"x","id":"abc123"}]"#.to_string(),
             image_url: Some("https://example.com/image.jpg".to_string()),
             generation_rationale: Some("The margin story from energy attach rates is under-appreciated.".to_string()),
+            in_reply_to_tweet_id: None,
         };
 
         // Use the real reusable function
@@ -344,6 +351,7 @@ mod tests {
             sources_json: "[]".to_string(),
             image_url: None,
             generation_rationale: None,
+            in_reply_to_tweet_id: None,
         }).await.unwrap();
 
         let update = UpdateDraftInput {
@@ -370,6 +378,7 @@ mod tests {
                 sources_json: "[]".to_string(),
                 image_url: None,
                 generation_rationale: None,
+                in_reply_to_tweet_id: None,
             },
         )
         .await
@@ -382,6 +391,7 @@ mod tests {
                 sources_json: "[]".to_string(),
                 image_url: None,
                 generation_rationale: None,
+                in_reply_to_tweet_id: None,
             },
         )
         .await
@@ -1189,6 +1199,95 @@ pub async fn generate_draft_from_input(
     .await
 }
 
+/// Generate a reply draft from an existing research source row.
+/// When the source has an X tweet id (`original_id` or status URL), stores
+/// `in_reply_to_tweet_id` so Approve & Post publishes as a threaded reply.
+#[tauri::command]
+pub async fn generate_reply_from_source(
+    state: State<'_, AppState>,
+    source_id: String,
+    style: Option<String>,
+) -> Result<Vec<Draft>, String> {
+    let source = fetch_research_source_by_id(&state.db, &source_id).await?;
+
+    let xai_key = require_xai_api_key(&state.db).await?;
+    let (_, grok_model) = load_grok_settings(&state.db).await?;
+
+    let draft_style = style
+        .as_deref()
+        .map(DraftStyle::parse)
+        .unwrap_or_default();
+
+    log::info!(
+        "generate_reply_from_source: source_id={}, style={}, reply_target={:?}",
+        source_id,
+        draft_style.as_str(),
+        generation::reply_target_tweet_id(&source)
+    );
+
+    generation::generate_drafts_from_sources_db_kind(
+        &state.db,
+        Some(&state.app_data_dir),
+        std::slice::from_ref(&source),
+        &xai_key,
+        &grok_model,
+        1,
+        draft_style,
+        generation::GenerationKind::Reply,
+    )
+    .await
+}
+
+/// Generate a reply draft from a pasted X post URL or parent post text.
+/// When the input is an X status URL (or resolvable tweet), the draft stores
+/// `in_reply_to_tweet_id` so Approve & Post publishes as a threaded reply.
+#[tauri::command]
+pub async fn generate_reply_from_input(
+    state: State<'_, AppState>,
+    input: String,
+    style: Option<String>,
+) -> Result<Vec<Draft>, String> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return Err("Paste an X post URL or the text of the post you want to reply to.".to_string());
+    }
+
+    let xai_key = require_xai_api_key(&state.db).await?;
+    let (_, grok_model) = load_grok_settings(&state.db).await?;
+    let creds = load_x_credentials_db(&state.db).await.ok();
+
+    let draft_style = style
+        .as_deref()
+        .map(DraftStyle::parse)
+        .unwrap_or_default();
+
+    log::info!(
+        "generate_reply_from_input: input_len={}, style={}",
+        trimmed.len(),
+        draft_style.as_str()
+    );
+
+    let source = custom_source::resolve_custom_input(trimmed, creds.as_ref()).await?;
+    let reply_id = generation::reply_target_tweet_id(&source);
+    log::info!(
+        "generate_reply_from_input: resolved source_type={}, reply_target={:?}",
+        source.source_type,
+        reply_id
+    );
+
+    generation::generate_drafts_from_sources_db_kind(
+        &state.db,
+        Some(&state.app_data_dir),
+        std::slice::from_ref(&source),
+        &xai_key,
+        &grok_model,
+        1,
+        draft_style,
+        generation::GenerationKind::Reply,
+    )
+    .await
+}
+
 // ============================================
 // X posting (T-007)
 // ============================================
@@ -1301,7 +1400,35 @@ pub async fn post_draft_to_x(state: State<'_, AppState>, id: String) -> Result<D
     .await?;
 
     let media_ids: Vec<String> = media_id.into_iter().collect();
-    let tweet_id = x_post::post_tweet(&creds, &context.normalized_text, &media_ids).await?;
+    let reply_author = draft
+        .in_reply_to_tweet_id
+        .as_ref()
+        .and_then(|_| {
+            primary
+                .map(|s| s.source_name.as_str())
+                .or_else(|| context.sources.first().map(|s| s.source_name.as_str()))
+        });
+    let tweet_id = x_post::post_tweet(
+        &creds,
+        &context.normalized_text,
+        &media_ids,
+        draft.in_reply_to_tweet_id.as_deref(),
+        reply_author,
+    )
+    .await
+    .map_err(|e| {
+        if draft.in_reply_to_tweet_id.is_some() {
+            // Append parent URL when we have it so the user can open and paste manually.
+            let parent_hint = draft
+                .in_reply_to_tweet_id
+                .as_ref()
+                .map(|id| format!(" Parent: https://x.com/i/web/status/{}", id))
+                .unwrap_or_default();
+            format!("{}{}", e, parent_hint)
+        } else {
+            e
+        }
+    })?;
 
     mark_draft_posted_db(&state.db, id, tweet_id.clone()).await?;
 

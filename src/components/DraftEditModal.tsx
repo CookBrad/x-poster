@@ -3,7 +3,7 @@ import { updateDraft, parseSources, type Draft } from '../lib/db'
 import { getDraftDisplayImage } from '../lib/draftImage'
 import { DraftImage } from './DraftImage'
 import { openUrl } from '@tauri-apps/plugin-opener'
-import { getCharCountClass, formatCharCount } from '../lib/draftUtils'
+import { getCharCountClass, formatCharCount, buildXPostUrl } from '../lib/draftUtils'
 
 export interface DraftEditModalProps {
   draft: Draft | null
@@ -30,6 +30,7 @@ export function DraftEditModal({ draft, open, onClose, onSaved }: DraftEditModal
 
   const sources = parseSources(draft)
   const previewText = text.trim() || '(empty post)'
+  const replyToUrl = buildXPostUrl(draft.in_reply_to_tweet_id)
 
   const handleSave = async () => {
     const trimmed = text.trim()
@@ -68,10 +69,42 @@ export function DraftEditModal({ draft, open, onClose, onSaved }: DraftEditModal
   return (
     <dialog className="modal modal-open">
       <div className="modal-box max-w-2xl">
-        <h3 className="font-bold text-lg mb-2">Edit draft</h3>
+        <h3 className="font-bold text-lg mb-2">
+          {draft.in_reply_to_tweet_id ? 'Edit reply draft' : 'Edit draft'}
+        </h3>
+
+        {replyToUrl && (
+          <div className="mb-3 space-y-1" data-testid="draft-edit-reply-target">
+            <p className="text-xs opacity-70">
+              Will post as a reply to{' '}
+              <span
+                className="link link-primary cursor-pointer"
+                title={replyToUrl}
+                onClick={async (e) => {
+                  e.stopPropagation()
+                  try {
+                    await openUrl(replyToUrl)
+                  } catch {
+                    window.open(replyToUrl, '_blank', 'noopener,noreferrer')
+                  }
+                }}
+              >
+                parent post
+              </span>
+              .
+            </p>
+            <p className="text-[10px] opacity-60 leading-snug">
+              Note: X&apos;s API often blocks replies to accounts that have not mentioned/engaged you
+              first (anti-bot rule) — even when the same reply works in the X app. If Approve fails,
+              open the parent and paste this text manually. Your draft stays pending.
+            </p>
+          </div>
+        )}
 
         <label className="form-control w-full mb-3">
-          <span className="label-text text-xs opacity-70">Post text</span>
+          <span className="label-text text-xs opacity-70">
+            {draft.in_reply_to_tweet_id ? 'Reply text' : 'Post text'}
+          </span>
           <textarea
             className="textarea textarea-bordered h-32 font-medium"
             value={text}

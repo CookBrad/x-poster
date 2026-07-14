@@ -10,6 +10,8 @@ import {
   getAllHistoricalSources,
   generateDraftFromSource,
   generateDraftFromInput,
+  generateReplyFromInput,
+  generateReplyFromSource,
   generateDraftsFromLatestResearch,
   postDraftToX,
   hasXCredentials,
@@ -40,6 +42,7 @@ describe('db.ts - Tauri command wrappers', () => {
     posted_at: null,
     x_post_id: null,
     generation_rationale: null,
+    in_reply_to_tweet_id: null,
   }
 
   describe('createDraft', () => {
@@ -192,6 +195,33 @@ describe('db.ts - Tauri command wrappers', () => {
         style: 'insight',
       })
       expect(result).toHaveLength(1)
+    })
+
+    it('calls generate_reply_from_input', async () => {
+      const replyDraft = { ...mockDraft, in_reply_to_tweet_id: '1234567890' }
+      mockInvoke.mockResolvedValueOnce([replyDraft])
+
+      const result = await generateReplyFromInput('https://x.com/elonmusk/status/1234567890')
+
+      expect(mockInvoke).toHaveBeenCalledWith('generate_reply_from_input', {
+        input: 'https://x.com/elonmusk/status/1234567890',
+        style: 'insight',
+      })
+      expect(result).toHaveLength(1)
+      expect(result[0].in_reply_to_tweet_id).toBe('1234567890')
+    })
+
+    it('calls generate_reply_from_source', async () => {
+      const replyDraft = { ...mockDraft, in_reply_to_tweet_id: '999' }
+      mockInvoke.mockResolvedValueOnce([replyDraft])
+
+      const result = await generateReplyFromSource('source-42', 'witty')
+
+      expect(mockInvoke).toHaveBeenCalledWith('generate_reply_from_source', {
+        sourceId: 'source-42',
+        style: 'witty',
+      })
+      expect(result[0].in_reply_to_tweet_id).toBe('999')
     })
 
     it('calls post_draft_to_x', async () => {

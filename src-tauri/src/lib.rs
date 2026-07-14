@@ -94,6 +94,8 @@ pub fn run() {
         commands::generate_drafts_from_latest_research,
         commands::generate_draft_from_source,
         commands::generate_draft_from_input,
+        commands::generate_reply_from_input,
+        commands::generate_reply_from_source,
         commands::post_draft_to_x,
         commands::resolve_draft_image,
         commands::test_x_credentials,
